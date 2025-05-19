@@ -307,7 +307,7 @@ if st.session_state.form_submitted:
     st.subheader("Request Summary")
     
     # Display success message with file path
-    st.success(f"Form data saved to: {st.session_state.json_file_path}")
+    # st.success(f"Form data saved to: {st.session_state.json_file_path}")
     
     # Process the JSON file and generate Excel
     template_path = "Template.xlsx"
