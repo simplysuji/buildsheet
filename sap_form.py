@@ -68,7 +68,7 @@ if 'server_data' not in st.session_state:
     st.session_state.server_data = []
 
 # Define options from the PDF documents
-SAP_REGIONS = ["Sirius", "U2K2", "Cordillera", "Global", "POC/Model Env"]
+SAP_REGIONS = ["Sirius", "U2K2", "Cordillera", "Global", "POC/Model Env", "Fusion"]
 AZURE_REGIONS = [
     "Azure: Northern Europe (Dublin) (IENO)",
     "Azure: Western Europe (Amsterdam) (NLWE)",
@@ -81,11 +81,10 @@ ENVIRONMENTS = ["Fix Development", "Fix Quality", "Fix Regression", "Fix Perform
                 "Project performance", "Project Development", "Project Quality", "Training", 
                 "Sandbox", "Project UAT", "Production"]
 SERVER_ROLES = [
-    "ASCS-01", "PAS-00", "NFS-NA", "DB2 DB", "AAS", "ASCS", "SCS", "Web Dispatcher", "HANA DB",
-    "ASCS-HA", "SCS-HA", "Web Dispatcher-HA", "HANA DB-HA", "NFS", "NFS-HA", "iSCSI SBD",
-    "PAS-DR", "AAS-DR", "ASCS-DR", "SCS-DR", "Web Dispatcher-DR", "HANA DB-DR", "NFS-DR", 
-    "iSCSI SBD-DR", "ASCS+PAS", "ASCS+PAS+NFS", "SCS+PAS", "SCS+PAS+NFS", "ASCS+NFS",
-    "SCS+NFS", "CS+NFS", "CS+NFS+PAS"
+    "AAS", "AAS-DR", "ASCS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-DR", "ASCS-HA",
+    "CS+NFS", "CS+NFS+PAS", "DB2 DB", "HANA DB", "HANA DB-DR", "HANA DB-HA", "iSCSI SBD", "iSCSI SBD-DR",
+    "NFS-DR", "NFS-NA", "PAS", "PAS-DR", "SCS", "SCS+NFS", "SCS+PAS", "SCS+PAS+NFS", "SCS-DR", "SCS-HA",
+    "Web Dispatcher", "Web Dispatcher-DR", "Web Dispatcher-HA"
 ]
 SERVICE_CRITICALITY = ["SC 1", "SC 2", "SC 3", "SC 4"]
 OS_VERSIONS = [
@@ -103,11 +102,11 @@ MEMORY_CPU = [
     "20vCPUs/160GBs", "32vCPUs/256GBs", "4vCPUs/32GBs", "48vCPUs/384GBs"
 ]
 RECORD_TYPES = ["A Record", "CNAME"]
-SUBNETS = ["Production", "Non-Production STS"]
+SUBNETS = ["Production STS", "Non-Production STS"]
 AZURE_SUBSCRIPTIONS = [
     "SAP Technical Services-01 (Global)", "SAP Technical Services-02 (Sirius)",
     "SAP Technical Services-03 (U2K2)", "SAP Technical Services-04 (Cordillera)",
-    "SAP Technical Services-05 (Fusion) - TBC", "SAP Technical Services-98 (Model Environment)"
+    "SAP Technical Services-05 (Fusion)", "SAP Technical Services-98 (Model Environment)"
 ]
 PARK_SCHEDULES = ["Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"]
 TIMEZONE = ["IST", "UTC", "CET", "GMT", "CST", "PST", "EST"]
@@ -116,6 +115,10 @@ TIMEZONE = ["IST", "UTC", "CET", "GMT", "CST", "PST", "EST"]
 # Function to update number of servers
 def update_num_servers():
     st.session_state.num_servers = st.session_state.num_servers_input
+
+# Function to check if server role contains PAS
+def contains_pas(server_role):
+    return "PAS" in server_role.upper()
 
 # GENERAL CONFIGURATION SECTION - Outside any form
 st.subheader("General Configuration")
@@ -177,6 +180,13 @@ for i in range(st.session_state.num_servers):
             server_role = st.selectbox("Server Role", SERVER_ROLES, key=f"server_role_{i}")
         with col2:
             service_criticality = st.selectbox("Service Criticality", SERVICE_CRITICALITY, key=f"service_criticality_{i}")
+        
+        # Show Availability Set option if server role contains PAS
+        availability_set = "No"  # Default value
+        if contains_pas(server_role):
+            availability_set = st.selectbox("Availability Set", ["Yes", "No"], 
+                                          key=f"availability_set_{i}",
+                                          help="Required for PAS servers for high availability")
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -245,6 +255,7 @@ for i in range(st.session_state.num_servers):
             "Server Number": i+1,
             "Server Role": server_role,
             "Service Criticality": service_criticality,
+            "Availability Set": availability_set if contains_pas(server_role) else "N/A",
             "OS Version": os_version,
             "Instance Type": instance_type,
             "Memory/CPU": memory_cpu,

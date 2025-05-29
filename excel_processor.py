@@ -207,6 +207,23 @@ def get_sap_region_letter(sap_region):
     }
     return region_mapping.get(sap_region, "x")
 
+def get_environment_code(environment):
+    """Get the code for a specific environment"""
+    environment_mapping = {
+        "Fix Development": "d",
+        "Project Development": "d", 
+        "Fix Quality": "q",
+        "Project Quality": "q",
+        "Training": "q",
+        "Fix Performance": "q",
+        "Project performance": "q",
+        "Project UAT": "q",
+        "Fix Regression": "u",
+        "Sandbox": "s",
+        "Production": "p"
+    }
+    return environment_mapping.get(environment, "d") # default to 'd' if not found
+
 def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
     """
     Process SAP form data from JSON and fill in the Excel template.
@@ -311,7 +328,7 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         
         # Column 19: Azure Resource Group Name (generate based on pattern)
         region_code = general_config.get("Azure Region Code", "").lower()
-        environment_code = general_config.get("Environment", "")[0].lower() if general_config.get("Environment", "") else ''
+        environment_code = get_environment_code(general_config.get("Environment", ""))
         itsg_id = general_config.get("ITSG ID", "")
         sid = general_config.get("SID", "").upper()
         subscription = general_config.get("Azure Subscription", "")
@@ -325,18 +342,29 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         sheet.cell(row=row, column=20).value = general_config.get("Cluster", "")
         
         # Column 21: Proximity Placement Group (updated format)
-        sap_region = general_config.get("SAP Region", "Sirius")
-        region_letter = get_sap_region_letter(sap_region)
-        az_zone = general_config.get("AZ Selection", "")
+        server_role = server.get("Server Role", "")
+        if any(role in server_role for role in ["PAS", "ASCS", "SCS"]):
+            sap_region = general_config.get("SAP Region", "Sirius")
+            region_letter = get_sap_region_letter(sap_region)
+            az_zone = general_config.get("AZ Selection", "")
 
-        # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-ppg
-        ppg = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-ppg"
-        sheet.cell(row=row, column=21).value = ppg
+            # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-ppg
+            ppg = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-ppg"
+            sheet.cell(row=row, column=21).value = ppg
+        else:
+            sheet.cell(row=row, column=21).value = ""
         
         # Column 22: Availability Set (updated format)
-        # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-as
-        availability_set = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-as"
-        sheet.cell(row=row, column=22).value = availability_set
+        if server.get("Availability Set", "").lower() == "yes":
+            sap_region = general_config.get("SAP Region", "Sirius")
+            region_letter = get_sap_region_letter(sap_region)
+            az_zone = general_config.get("AZ Selection", "")
+            
+            # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-as
+            availability_set = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-as"
+            sheet.cell(row=row, column=22).value = availability_set
+        else:
+            sheet.cell(row=row, column=22).value = ""
         
         # Column 23: Azure Availability Zone
         sheet.cell(row=row, column=23).value = general_config.get("AZ Selection", "")
@@ -345,26 +373,26 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         sheet.cell(row=row, column=24).value = "Yes"
         
         # Column 25: On Demand/Reservation
-        sheet.cell(row=row, column=25).value = general_config.get("Reservation Type", "")
+        sheet.cell(row=row, column=25).value = server.get("Reservation Type", "")
         
         # Column 26: Reservation Term
-        sheet.cell(row=row, column=26).value = general_config.get("Reservation Term", "")
+        sheet.cell(row=row, column=26).value = server.get("Reservation Term", "")
         
         # Column 27: OptInOptOut
-        sheet.cell(row=row, column=27).value = general_config.get("OptInOptOut", "")
+        sheet.cell(row=row, column=27).value = server.get("OptInOptOut", "")
         
         # Column 28: Park My Cloud Schedule
-        sheet.cell(row=row, column=28).value = general_config.get("Park My Cloud Schedule", "")
+        sheet.cell(row=row, column=28).value = server.get("Park My Cloud Schedule", "")
         
         # Column 29: Park My cloud team name and Member
-        sheet.cell(row=row, column=29).value = general_config.get("Park My cloud team name and Member", "")
+        sheet.cell(row=row, column=29).value = server.get("Park My cloud team name and Member", "")
         
         # Columns 30-43: Type and Qty pairs (leaving blank)
         for col in range(30, 44):
             sheet.cell(row=row, column=col).value = ""
         
         # Column 44: Outbound Internet Access Required
-        sheet.cell(row=row, column=44).value = general_config.get("Outbound Internet Access Required", "")
+        sheet.cell(row=row, column=44).value = server.get("Outbound Internet Access Required", "")
         
         # Column 45: Additional Requirements / Comments (leave blank)
         sheet.cell(row=row, column=45).value = ""
@@ -448,6 +476,7 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         
         # D10: /srv/nfs/{region_letter}{sid_lower}
         fs_sheet.cell(row=10, column=4).value = f"/srv/nfs/{region_letter}{sid_lower}"
+        fs_sheet.cell(row=10, column=5).value = f"/srv/nfs/{region_letter}{sid_lower}002"
         
         # Process the NFS directory structure (rows 15-19)
         # Row 15: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/interface 
@@ -481,7 +510,7 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         
         # Update volume group and logical volume names (rows 7-13)
         # Row 9: P1Xsaplocal -> <SID>saplocal
-        db_sheet.cell(row=9, column=3).value = f"{sid}saplocal"
+        db_sheet.cell(row=8, column=3).value = f"{sid}saplocal"
         db_sheet.cell(row=9, column=4).value = f"{sid}sap"
         db_sheet.cell(row=9, column=5).value = f"/usr/sap/{sid}"
         
@@ -505,8 +534,8 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         db_sheet.cell(row=13, column=5).value = f"/hana/data/"
         
         # Update NFS Mounts (row 17)
-        db_sheet.cell(row=17, column=4).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
-        db_sheet.cell(row=17, column=5).value = f"/sapmnt/{sid}"
+        db_sheet.cell(row=17, column=5).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
+        db_sheet.cell(row=17, column=6).value = f"/sapmnt/{sid}"
         
         # Set DB server name in row 2 column A (if we have a DB service model)
         if db_service_model:
