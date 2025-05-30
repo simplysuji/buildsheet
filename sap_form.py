@@ -83,7 +83,7 @@ ENVIRONMENTS = ["Fix Development", "Fix Quality", "Fix Regression", "Fix Perform
 SERVER_ROLES = [
     "AAS", "AAS-DR", "ASCS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-DR", "ASCS-HA",
     "CS+NFS", "CS+NFS+PAS", "DB2 DB", "HANA DB", "HANA DB-DR", "HANA DB-HA", "iSCSI SBD", "iSCSI SBD-DR",
-    "NFS-DR", "NFS-NA", "PAS", "PAS-DR", "SCS", "SCS+NFS", "SCS+PAS", "SCS+PAS+NFS", "SCS-DR", "SCS-HA",
+    "PAS", "PAS-DR", "SCS", "SCS+NFS", "SCS+PAS", "SCS+PAS+NFS", "SCS-DR", "SCS-HA",
     "Web Dispatcher", "Web Dispatcher-DR", "Web Dispatcher-HA"
 ]
 SERVICE_CRITICALITY = ["SC 1", "SC 2", "SC 3", "SC 4"]

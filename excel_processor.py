@@ -413,10 +413,16 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         sheet.cell(row=row, column=50).value = server.get("Timezone", "CET")
     
     # Process the sheets after handling the SAP sheet
+    
+    # After processing the SAP sheet, check which database sheets are needed
+    server_roles = [server.get("Server Role", "") for server in server_data]
+    has_hana = any("HANA" in role for role in server_roles)
+    has_db2 = any("DB2" in role for role in server_roles)
+
     # Get the SID from the form data
     sid = general_config.get("SID", "").upper()
     sid_lower = sid.lower()
-    sap_region = general_config.get("SAP Region", "Sirius")
+    sap_region = general_config.get("SAP Region", "Global")
     region_letter = get_sap_region_letter(sap_region)
 
     # Collect service model names and identify NFS and DB servers
@@ -495,52 +501,77 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         fs_sheet.cell(row=18, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans"
         fs_sheet.cell(row=18, column=4).value = f"/usr/sap/trans"
 
-    # Process SID_DB sheet if it exists
-    if "SID_DB" in workbook.sheetnames:
-        db_sheet = workbook["SID_DB"]
-        db_sheet.title = f"{sid}_DB"  # Rename the sheet
-        db_sheet = workbook[f"{sid}_DB"]  # Get the renamed sheet
+    # Conditionally process HANA sheet
+    if has_hana and "SID_FS layout HANA" in workbook.sheetnames:
+        hana_sheet = workbook["SID_FS layout HANA"]
+        hana_sheet.title = f"{sid}_FS layout HANA"  # Rename the sheet 
+        hana_sheet = workbook[f"{sid}_FS layout HANA"]  # Get the renamed sheet
         
         # Title in cell A1: "<SID> Hana Standalone on Azure"
-        db_sheet.cell(row=1, column=1).value = f"{sid} Hana Standalone on Azure"
+        hana_sheet.cell(row=1, column=1).value = f"{sid} Hana Standalone on Azure"
         
         # Update cells in rows 2-3
-        db_sheet.cell(row=2, column=1).value = f"{sid} - System DB"
-        db_sheet.cell(row=3, column=1).value = f"{sid} - Tenant DB"
+        hana_sheet.cell(row=2, column=1).value = f"{sid} - System DB"
+        hana_sheet.cell(row=3, column=1).value = f"{sid} - Tenant DB"
         
         # Update volume group and logical volume names (rows 7-13)
         # Row 9: P1Xsaplocal -> <SID>saplocal
-        db_sheet.cell(row=8, column=3).value = f"{sid}saplocal"
-        db_sheet.cell(row=9, column=4).value = f"{sid}sap"
-        db_sheet.cell(row=9, column=5).value = f"/usr/sap/{sid}"
+        hana_sheet.cell(row=8, column=3).value = f"{sid}saplocal"
+        hana_sheet.cell(row=9, column=4).value = f"{sid}sap"
+        hana_sheet.cell(row=9, column=5).value = f"/usr/sap/{sid}"
         
         # Row 10: Update DAAsap for the tenant DB
-        db_sheet.cell(row=10, column=4).value = f"DAAsap"
-        db_sheet.cell(row=10, column=5).value = f"/usr/sap/DAA"
+        hana_sheet.cell(row=10, column=4).value = f"DAAsap"
+        hana_sheet.cell(row=10, column=5).value = f"/usr/sap/DAA"
         
         # Row 11: P1Xhanashared -> <SID>hanashared
-        db_sheet.cell(row=11, column=3).value = f"{sid}hanashared"
-        db_sheet.cell(row=11, column=4).value = f"{sid}shared"
-        db_sheet.cell(row=11, column=5).value = f"/hana/shared/"
+        hana_sheet.cell(row=11, column=3).value = f"{sid}hanashared"
+        hana_sheet.cell(row=11, column=4).value = f"{sid}shared"
+        hana_sheet.cell(row=11, column=5).value = f"/hana/shared/"
         
         # Row 12: P1Xhanalog -> <SID>hanalog
-        db_sheet.cell(row=12, column=3).value = f"{sid}hanalog"
-        db_sheet.cell(row=12, column=4).value = f"{sid}log"
-        db_sheet.cell(row=12, column=5).value = f"/hana/log/"
+        hana_sheet.cell(row=12, column=3).value = f"{sid}hanalog"
+        hana_sheet.cell(row=12, column=4).value = f"{sid}log"
+        hana_sheet.cell(row=12, column=5).value = f"/hana/log/"
         
         # Row 13: P1Xhanadata -> <SID>hanadata
-        db_sheet.cell(row=13, column=3).value = f"{sid}hanadata"
-        db_sheet.cell(row=13, column=4).value = f"{sid}data"
-        db_sheet.cell(row=13, column=5).value = f"/hana/data/"
+        hana_sheet.cell(row=13, column=3).value = f"{sid}hanadata"
+        hana_sheet.cell(row=13, column=4).value = f"{sid}data"
+        hana_sheet.cell(row=13, column=5).value = f"/hana/data/"
         
         # Update NFS Mounts (row 17)
-        db_sheet.cell(row=17, column=5).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
-        db_sheet.cell(row=17, column=6).value = f"/sapmnt/{sid}"
+        hana_sheet.cell(row=17, column=5).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
+        hana_sheet.cell(row=17, column=6).value = f"/sapmnt/{sid}"
         
         # Set DB server name in row 2 column A (if we have a DB service model)
         if db_service_model:
             # Use DB service model - update cell C2
-            db_sheet.cell(row=4, column=1).value = f"Node 1"
+            hana_sheet.cell(row=4, column=1).value = f"Node 1"
+    
+    
+    # Conditionally process DB2 sheet
+    if has_db2 and "SID_FS Layout DB2" in workbook.sheetnames:
+        db2_sheet = workbook["SID_FS Layout DB2"]
+        db2_sheet.title = f"{sid}_FS Layout DB2"  # Rename the sheet
+        db2_sheet = workbook[f"{sid}_FS Layout DB2"]  # Get the renamed sheet
+        
+        # Find and replace all "SID" with the actual SID value
+        for row in db2_sheet.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
+                    cell.value = cell.value.replace("SID", sid)
+        
+        # Update NFS Mounts (row 17)
+        db2_sheet.cell(row=51, column=4).value = f"{region_letter}{sid_lower}000a:/srv/nfs/{region_letter}{sid_lower}/sapmnt"
+    
+    
+    
+    # Remove unused database sheets
+    if not has_hana and "SID_FS layout HANA" in workbook.sheetnames:
+        workbook.remove(workbook["SID_FS layout HANA"])
+
+    if not has_db2 and "SID_FS Layout DB2" in workbook.sheetnames:
+        workbook.remove(workbook["SID_FS Layout DB2"])
     
     
     # Save the workbook
