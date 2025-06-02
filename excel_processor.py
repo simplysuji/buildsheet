@@ -4,7 +4,7 @@ import os
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-def generate_service_model_names(server_role, sid, sap_region, region_code="eu", dns_excel_path="SAP Service Model Names 10.11.xlsx"):
+def generate_service_model_names(server_role, sid, sap_region, region_code="eu", dns_excel_path="SAP Buildsheet Automation Feeder.xlsx"):
     """
     Generate service model names based on server role by reading from DNS Excel file
     
@@ -107,7 +107,7 @@ def generate_service_model_names(server_role, sid, sap_region, region_code="eu",
     # Default return empty if no mapping found
     return ""
 
-def get_instance_number(server_role, environment_type, excel_path="SAP Service Model Names 10.11.xlsx"):
+def get_instance_number(server_role, environment_type, excel_path="SAP Buildsheet Automation Feeder.xlsx"):
     """
     Get instance number for server role based on environment type by reading from Excel file
     
