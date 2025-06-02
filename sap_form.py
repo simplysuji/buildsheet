@@ -43,6 +43,64 @@ def create_download_link(excel_file_path):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+# Function to get region code based on Azure region
+def get_region_code(azure_region):
+    """
+    Get the region code based on the selected Azure region
+    
+    Args:
+        azure_region (str): The selected Azure region
+        
+    Returns:
+        str: The corresponding region code
+    """
+    if "Amsterdam" in azure_region or "NLWE" in azure_region:
+        return "bnlwe"
+    elif "Dublin" in azure_region or "IENO" in azure_region:
+        return "bieno"
+    else:
+        return "bnlwe"  # Default fallback
+
+# Add this function after the imports and before the constants
+def load_vm_sku_data():
+    """
+    Load VM SKU data from the Excel file
+    
+    Returns:
+        dict: Dictionary mapping VM Type to VM Size
+    """
+    try:
+        # Read the SKU Name sheet from the Excel file
+        df = pd.read_excel("SAP Buildsheet Automation Feeder.xlsx", sheet_name="SKU Name")
+        
+        # Create a dictionary mapping VM Type to VM Size
+        vm_mapping = {}
+        for _, row in df.iterrows():
+            vm_type = row['VM Type']
+            vm_size = row['VM Size']
+            if pd.notna(vm_type) and pd.notna(vm_size):
+                vm_mapping[vm_type] = vm_size
+        
+        return vm_mapping
+    except Exception as e:
+        st.error(f"Error loading VM SKU data: {str(e)}")
+        return {}
+
+# Add this function to get VM size based on VM type
+def get_vm_size(vm_type, vm_mapping):
+    """
+    Get VM size based on VM type
+    
+    Args:
+        vm_type (str): The selected VM type
+        vm_mapping (dict): Dictionary mapping VM Type to VM Size
+        
+    Returns:
+        str: The corresponding VM size
+    """
+    return vm_mapping.get(vm_type, "Not Available")
+
+
 # Set page configuration
 st.set_page_config(page_title="SAP Buildsheet Request Form", layout="wide")
 
@@ -72,10 +130,8 @@ SAP_REGIONS = ["Sirius", "U2K2", "Cordillera", "Global", "POC/Model Env", "Fusio
 AZURE_REGIONS = [
     "Azure: Northern Europe (Dublin) (IENO)",
     "Azure: Western Europe (Amsterdam) (NLWE)",
-    "Azure: Northern Europe NEW (Dublin) (IENO)",
-    "Azure: Central India (Pune) (INCE)"
 ]
-REGION_CODES = ["bnlwe", "bieno"]
+# REGION_CODES = ["bnlwe", "bieno"]
 AZ_ZONES = ["1", "2", "3"]
 ENVIRONMENTS = ["Fix Development", "Fix Quality", "Fix Regression", "Fix Performance", 
                 "Project performance", "Project Development", "Project Quality", "Training", 
@@ -91,16 +147,25 @@ OS_VERSIONS = [
     "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
     "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2"
 ]
-INSTANCE_TYPES = [
+# INSTANCE_TYPES = [
+#     "D8asv4", "E8asv4", "E16_v3", "E16as_v4", "E16ds_v4", "E16s_v3", "E2_v3", 
+#     "E20as_v4", "E20ds_v4", "E20s_v3", "E2as_v4", "E2ds_v4", "E2s_v3", "E32_v3",
+#     "E32as_v4", "E32ds_v4", "E32s_v3", "E4_v3", "E48as_v4", "E48ds_v4", "E48s_v3",
+#     "E4as_v4", "E4ds_v4", "E4s_v3"
+# ]
+# MEMORY_CPU = [
+#     "8 vCPU, 32 GiB", "8 vCPU, 64 GiB", "16vCPUs/128GBs", "2vCPUs/16GBs", 
+#     "20vCPUs/160GBs", "32vCPUs/256GBs", "4vCPUs/32GBs", "48vCPUs/384GBs"
+# ]
+
+vm_sku_mapping = load_vm_sku_data()
+INSTANCE_TYPES = list(vm_sku_mapping.keys()) if vm_sku_mapping else [
     "D8asv4", "E8asv4", "E16_v3", "E16as_v4", "E16ds_v4", "E16s_v3", "E2_v3", 
     "E20as_v4", "E20ds_v4", "E20s_v3", "E2as_v4", "E2ds_v4", "E2s_v3", "E32_v3",
     "E32as_v4", "E32ds_v4", "E32s_v3", "E4_v3", "E48as_v4", "E48ds_v4", "E48s_v3",
     "E4as_v4", "E4ds_v4", "E4s_v3"
 ]
-MEMORY_CPU = [
-    "8 vCPU, 32 GiB", "8 vCPU, 64 GiB", "16vCPUs/128GBs", "2vCPUs/16GBs", 
-    "20vCPUs/160GBs", "32vCPUs/256GBs", "4vCPUs/32GBs", "48vCPUs/384GBs"
-]
+
 RECORD_TYPES = ["A Record", "CNAME"]
 SUBNETS = ["Production STS", "Non-Production STS"]
 AZURE_SUBSCRIPTIONS = [
@@ -124,13 +189,17 @@ def contains_pas(server_role):
 st.subheader("General Configuration")
 
 # First Row
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)  # Changed from 3 columns to 2
 with col1:
     sap_region = st.selectbox("SAP Region", SAP_REGIONS, key="sap_region")
 with col2:
     azure_region = st.selectbox("Azure Region", AZURE_REGIONS, key="azure_region")
-with col3:
-    region_code = st.selectbox("Azure Region Code", REGION_CODES, key="region_code")
+
+# Auto-determine region code based on azure_region selection
+region_code = get_region_code(azure_region)
+
+# Display the auto-selected region code for user confirmation
+st.info(f"Region Code set to: **{region_code}** (based on {azure_region})")
 
 # Second Row
 col1, col2, col3 = st.columns(3)
@@ -194,8 +263,16 @@ for i in range(st.session_state.num_servers):
         with col2:
             instance_type = st.selectbox("Azure Instance Type", INSTANCE_TYPES, key=f"instance_type_{i}")
         with col3:
-            memory_cpu = st.selectbox("Memory / CPU", MEMORY_CPU, key=f"memory_cpu_{i}")
-            
+            # Auto-populate Memory/CPU based on selected instance type
+            memory_cpu = get_vm_size(instance_type, vm_sku_mapping)
+            st.text_input(
+                "Memory / CPU", 
+                value=memory_cpu,
+                disabled=True,  # Make it non-editable (grayed out)
+                key=f"memory_cpu_{i}",
+                help="This value is automatically populated based on the selected Azure Instance Type"
+            )
+                    
         # Reservation options - per server
         col1, col2 = st.columns(2)
         with col1:
@@ -258,7 +335,7 @@ for i in range(st.session_state.num_servers):
             "Availability Set": availability_set if contains_pas(server_role) else "N/A",
             "OS Version": os_version,
             "Instance Type": instance_type,
-            "Memory/CPU": memory_cpu,
+            "Memory/CPU": get_vm_size(instance_type, vm_sku_mapping),
             "Reservation Type": reservation_type,
             "Reservation Term": reservation_term if reservation_type == "Reservation" else "N/A",
             "OptInOptOut": opt_in_out,
