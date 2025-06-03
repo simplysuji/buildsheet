@@ -4,7 +4,7 @@ import os
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-def generate_service_model_names(server_role, sid, sap_region, region_code="eu", dns_excel_path="SAP Buildsheet Automation Feeder.xlsx"):
+def generate_service_model_names(server_role, sid, sap_region, city, region_code="eu", dns_excel_path="SAP Buildsheet Automation Feeder.xlsx"):
     """
     Generate service model names based on server role by reading from DNS Excel file
     
@@ -12,6 +12,7 @@ def generate_service_model_names(server_role, sid, sap_region, region_code="eu",
         server_role (str): The role of the server
         sid (str): SID of the system
         sap_region (str): SAP Region (Sirius, U2K2, etc.)
+        city (str): City name for the server (e.g., Amsterdam, Dublin)
         region_code (str): Region code for the URL (default: "eu")
         dns_excel_path (str): Path to the DNS naming convention Excel file
     
@@ -79,7 +80,13 @@ def generate_service_model_names(server_role, sid, sap_region, region_code="eu",
             # Match role with identifier in mapping
             matched_identifier = None
             for identifier in identifier_mapping:
-                if identifier in role:
+                if "AAS" in role:
+                    # Special case for AAS, based on Amsterdam or Dublin
+                    if identifier in f"AAS-{city}":
+                        matched_identifier = identifier
+                        break
+                
+                elif identifier in role:
                     matched_identifier = identifier
                     break
             
@@ -95,7 +102,13 @@ def generate_service_model_names(server_role, sid, sap_region, region_code="eu",
         # Handle single role
         matched_identifier = None
         for identifier in identifier_mapping:
-            if identifier in server_role:
+            if "AAS" in server_role:
+                # Special case for AAS, based on Amsterdam or Dublin
+                if identifier in f"AAS-{city}":
+                    matched_identifier = identifier
+                    break
+                
+            elif identifier in server_role:
                 matched_identifier = identifier
                 break
         
@@ -155,7 +168,7 @@ def get_instance_number(server_role, environment_type, excel_path="SAP Buildshee
             "ASCS": {"Non-Production": "01", "Production & DR": "21"},
             "SCS": {"Non-Production": "02", "Production & DR": "22"},
             "PAS": {"Non-Production": "00", "Production & DR": "20"},
-            "AAS1..n": {"Non-Production": "00", "Production & DR": "20"},
+            "AAS": {"Non-Production": "00", "Production & DR": "20"},
             "Web Dispatcher": {"Non-Production": "10", "Production & DR": "20"}
         }
     
@@ -305,6 +318,7 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
             server.get("Server Role", ""), 
             general_config.get("SID", ""),
             general_config.get("SAP Region", "Sirius"),
+            general_config.get("Azure Region").split("(")[1].split(")")[0]
         )
         sheet.cell(row=row, column=12).value = service_model_name
         
@@ -343,7 +357,7 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         
         # Column 21: Proximity Placement Group (updated format)
         server_role = server.get("Server Role", "")
-        if any(role in server_role for role in ["PAS", "ASCS", "SCS"]):
+        if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS"]):
             sap_region = general_config.get("SAP Region", "Sirius")
             region_letter = get_sap_region_letter(sap_region)
             az_zone = general_config.get("AZ Selection", "")
@@ -500,6 +514,12 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         # Row 18: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans
         fs_sheet.cell(row=18, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans"
         fs_sheet.cell(row=18, column=4).value = f"/usr/sap/trans"
+        
+        # Find and replace all "SID" with the actual SID value
+        for row in fs_sheet.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
+                    cell.value = cell.value.replace("SID", sid)
 
     # Conditionally process HANA sheet
     if has_hana and "SID_FS layout HANA" in workbook.sheetnames:
@@ -547,6 +567,12 @@ def process_sap_data_to_excel(json_file_path, template_path, output_path=None):
         if db_service_model:
             # Use DB service model - update cell C2
             hana_sheet.cell(row=4, column=1).value = f"Node 1"
+        
+        # Find and replace all "SID" with the actual SID value
+        for row in hana_sheet.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
+                    cell.value = cell.value.replace("SID", sid)
     
     
     # Conditionally process DB2 sheet

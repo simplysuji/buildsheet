@@ -145,7 +145,7 @@ SERVER_ROLES = [
 SERVICE_CRITICALITY = ["SC 1", "SC 2", "SC 3", "SC 4"]
 OS_VERSIONS = [
     "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
-    "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2"
+    "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2", "Windows 2016", "Windows 2019", "Windows 2022", "Windows 2025"
 ]
 # INSTANCE_TYPES = [
 #     "D8asv4", "E8asv4", "E16_v3", "E16as_v4", "E16ds_v4", "E16s_v3", "E2_v3", 
@@ -173,8 +173,17 @@ AZURE_SUBSCRIPTIONS = [
     "SAP Technical Services-03 (U2K2)", "SAP Technical Services-04 (Cordillera)",
     "SAP Technical Services-05 (Fusion)", "SAP Technical Services-98 (Model Environment)"
 ]
-PARK_SCHEDULES = ["Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"]
-TIMEZONE = ["IST", "UTC", "CET", "GMT", "CST", "PST", "EST"]
+PARK_SCHEDULES = ["Weekdays-12 hours Snooze(5pm IST to 5am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(6pm IST to 6am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(7pm IST to 7am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(8pm IST to 8am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(9pm IST to 9am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
+    "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
+]
+
+
+TIMEZONE = ["IST", "UTC", "CET", "GMT", "CST", "PST", "EST", "BST"]
 
 
 # Function to update number of servers
@@ -183,7 +192,7 @@ def update_num_servers():
 
 # Function to check if server role contains PAS
 def contains_pas(server_role):
-    return "PAS" in server_role.upper()
+    return "PAS" in server_role.upper() or "AAS" in server_role.upper()
 
 # GENERAL CONFIGURATION SECTION - Outside any form
 st.subheader("General Configuration")
@@ -406,6 +415,10 @@ if st.session_state.form_submitted:
         st.info("Please ensure 'Template.xlsx' is in the same directory as this script.")
     else:
         # Generate a unique output filename
+        # output_dir = os.getenv('OUTPUT_DIR', '/app/generated_files')
+        # os.mkdir(output_dir) if not os.path.exists(output_dir) else None
+        # output_excel_path = os.path.join(output_dir, f"SAP_Request_{st.session_state.form_data['general_config'].get('SID', 'Unknown')}_{st.session_state.form_data['general_config'].get('Environment', '')}.xlsx")
+        
         output_excel_path = f"SAP_Request_{st.session_state.form_data['general_config'].get('SID', 'Unknown')}_{st.session_state.form_data['general_config'].get('Environment', '')}.xlsx"
         
         try:
