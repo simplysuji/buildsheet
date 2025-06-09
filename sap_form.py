@@ -110,7 +110,7 @@ def contains_pas(server_role):
 
 # Function to check if server role contains ASCS
 def contains_ascs(server_role):
-    return "ASCS" in server_role.upper()
+    return "ASCS" == server_role.upper()
 
 # Add this function after the get_region_code function and before load_vm_sku_data
 
