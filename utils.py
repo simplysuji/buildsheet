@@ -372,9 +372,12 @@ def add_other_sheets(json_file_path, template_path, workbook):
     has_nfs = any("NFS" in role for role in server_roles)
     has_hana = any("HANA" in role for role in server_roles)
     has_db2 = any("DB2" in role for role in server_roles)
-    has_ascs_dr = any(role == "ASCS-DR" for role in server_roles)
-    has_ascs  = any(role == "ASCS" for role in server_roles)
-    only_pas_aas = any("PAS" in role for role in server_roles) or any("AAS" in role for role in server_roles)
+    has_ascs_dr = any(role == "ASCS-DR" for role in server_roles) or any(role == "SCS-DR" for role in server_roles)
+    has_ascs  = any(role == "ASCS" for role in server_roles) or any(role == "ASCS+PAS" for role in server_roles) or any(role == "SCS" for role in server_roles) or any(role == "SCS+PAS" for role in server_roles)
+
+    pas_roles = {"PAS", "AAS", "PAS-DR", "AAS-DR", "ASCS+PAS", "SCS+PAS"}
+    only_pas_aas = any(role in pas_roles for role in server_roles)
+
 
     # Get the SID from the form data
     sid = general_config.get("SID", "").upper()
