@@ -108,6 +108,10 @@ def update_num_servers(tab_key):
 def contains_pas(server_role):
     return "PAS" in server_role.upper() or "AAS" in server_role.upper()
 
+# Function to check if server role contains ASCS
+def contains_ascs(server_role):
+    return "ASCS" in server_role.upper()
+
 # Add this function after the get_region_code function and before load_vm_sku_data
 
 def get_dr_az_zone(azure_region, azure_subscription):
@@ -211,7 +215,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         "AAS-DR", "ASCS-DR", "HANA DB-DR", "PAS-DR", "SCS-DR", 
         "Web Dispatcher-DR", "iSCSI SBD-DR", "DB2-DR"
     ]
-    
+
     # Try to auto-suggest DR role
     suggested_dr_role = ""
     if "AAS" in primary_server_role and "DR" not in primary_server_role:
@@ -304,7 +308,14 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                 key=f"dr_az_selection_{tab_key}_{server_index}",
                 help=f"Suggested: {suggested_dr_az} (based on primary server region and subscription)"
             )
-                
+        
+        # Show AFS Servername option if server role contains PAS
+        dr_afs_needed = "NA"  # Default value
+        if contains_ascs(dr_server_role):
+            dr_afs_needed = st.text_input("AFS Server Name", 
+                                        key=f"dr_afs_needed_{tab_key}_{server_index}",
+                                        help="Required for ASCS servers")
+        
         # Third row: Instance Type, Memory/CPU
         col1, col2 = st.columns(2)
         with col1:
@@ -386,6 +397,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         "Service Criticality": dr_service_criticality,
         "OS Version": dr_os_version,
         "Availability Set": dr_availability_set if contains_pas(dr_server_role) else "N/A",
+        "AFS Server Name": dr_afs_needed if contains_ascs(dr_server_role) else "N/A",
         "AZ Selection": dr_az_selection,
         "Azure Instance Type": dr_instance_type,
         "Memory/CPU": get_vm_size(dr_instance_type, vm_sku_mapping),
@@ -450,10 +462,10 @@ def render_form_content(tab_key, is_production=False):
     ]
     AZ_ZONES = ["1", "2", "3"]
     SERVER_ROLES = [
-        "AAS", "AAS-DR", "ASCS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-DR", "ASCS-HA",
-        "CS+NFS", "CS+NFS+PAS", "DB2 DB", "HANA DB", "HANA DB-DR", "HANA DB-HA", "iSCSI SBD", "iSCSI SBD-DR",
-        "PAS", "PAS-DR", "SCS", "SCS+NFS", "SCS+PAS", "SCS+PAS+NFS", "SCS-DR", "SCS-HA",
-        "Web Dispatcher", "Web Dispatcher-DR", "Web Dispatcher-HA", "Maxdb", "CS", "Optimizers", "IQ roles"
+        "AAS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-HA", "SCS+PAS+NFS", 
+        "CS+NFS", "CS+NFS+PAS", "DB2 DB", "HANA DB", "HANA DB-HA", "iSCSI SBD", "SCS", "SCS+NFS", "SCS+PAS",
+        "PAS", "Web Dispatcher",  "Web Dispatcher-HA", "Maxdb", "CS", "Optimizers", "IQ roles",
+        "PAS-DR", "AAS-DR", "ASCS-DR", "HANA DB-DR", "SCS-DR", "SCS-HA", "iSCSI SBD-DR", "Web Dispatcher-DR"
     ]
     OS_VERSIONS = [
         "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
@@ -541,19 +553,7 @@ def render_form_content(tab_key, is_production=False):
     
     for i in range(st.session_state[f'num_servers_{tab_key}']):
         with st.expander(f"🖥️ Primary Server {i+1}", expanded=True):
-            # Production-specific fields: A Record/CNAME, AZ Selection, and Cluster
-            if is_production:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}_{i}")
-                with col2:
-                    az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}_{i}")
-                with col3:
-                    cluster = st.selectbox("Cluster", 
-                                         ["Yes", "No"],
-                                         key=f"cluster_{tab_key}_{i}",
-                                         help="Required for Production environments")
-            
+                       
             # Basic server info
             col1, col2 = st.columns(2)
             with col1:
@@ -567,6 +567,26 @@ def render_form_content(tab_key, is_production=False):
                 availability_set = st.selectbox("Availability Set", ["Yes", "No"], 
                                               key=f"availability_set_{tab_key}_{i}",
                                               help="Required for PAS servers for high availability")
+                
+            # Show AFS Servername option if server role contains PAS
+            afs_needed = "NA"  # Default value
+            if contains_ascs(server_role):
+                afs_needed = st.text_input("AFS Server Name", 
+                                              key=f"afs_needed_{tab_key}_{i}",
+                                              help="Required for ASCS servers")
+            
+            # Production-specific fields: A Record/CNAME, AZ Selection, and Cluster
+            if is_production:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}_{i}")
+                with col2:
+                    az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}_{i}")
+                with col3:
+                    cluster = st.selectbox("Cluster", 
+                                         ["Yes", "No"],
+                                         key=f"cluster_{tab_key}_{i}",
+                                         help="Required for Production environments")
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -647,6 +667,7 @@ def render_form_content(tab_key, is_production=False):
                 "Server Role": server_role,
                 "Service Criticality": service_criticality,
                 "Availability Set": availability_set if contains_pas(server_role) else "N/A",
+                "AFS Server Name": afs_needed if contains_ascs(server_role) else "N/A",
                 "OS Version": os_version,
                 "Instance Type": instance_type,
                 "Memory/CPU": get_vm_size(instance_type, vm_sku_mapping),

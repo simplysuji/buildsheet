@@ -369,6 +369,7 @@ def add_other_sheets(json_file_path, template_path, workbook):
         
     # After processing the SAP sheet, check which database sheets are needed
     server_roles = [server.get("Server Role", "") for server in server_data]
+    has_nfs = any("NFS" in role for role in server_roles)
     has_hana = any("HANA" in role for role in server_roles)
     has_db2 = any("DB2" in role for role in server_roles)
     has_ascs_dr = any(role == "ASCS-DR" for role in server_roles)
@@ -380,7 +381,23 @@ def add_other_sheets(json_file_path, template_path, workbook):
     sid_lower = sid.lower()
     sap_region = general_config.get("SAP Region", "Global")
     region_letter = get_sap_region_letter(sap_region)
+    
+    region = "AMS" if "Amsterdam" in general_config.get("Azure Region", "") else "Dublin"
+    region_dr = "Dublin" if "Amsterdam" in general_config.get("Azure Region", "") else "AMS"
 
+    afs_servername = None
+    for server in server_data:
+        if server.get("Server Role", "") == "ASCS":
+            afs_servername = server.get("AFS Server Name", "")
+            break
+    
+    afs_servername_dr = None
+    for server in server_data:
+        if server.get("Server Role", "") == "ASCS-DR":
+            afs_servername_dr = server.get("AFS Server Name", "")
+            break
+    
+    
     # Collect service model names and identify NFS and DB servers
     service_model_names = []
     nfs_service_model = None
@@ -407,10 +424,10 @@ def add_other_sheets(json_file_path, template_path, workbook):
                 db_service_model = server_model_name
 
     # Rename the sheets to use the SID provided by the user
-    if "SID_FS NFS" in workbook.sheetnames:
-        fs_sheet = workbook["SID_FS NFS"]
-        fs_sheet.title = f"{sid}_FS NFS"  # Rename the sheet
-        fs_sheet = workbook[f"{sid}_FS NFS"]  # Get the renamed sheet
+    if has_nfs and "SID_FS ASCS+PAS+NFS" in workbook.sheetnames:
+        fs_sheet = workbook["SID_FS ASCS+PAS+NFS"]
+        fs_sheet.title = f"{sid}_FS ASCS+PAS+NFS"  # Rename the sheet
+        fs_sheet = workbook[f"{sid}_FS ASCS+PAS+NFS"]  # Get the renamed sheet
         
         # Process SID_FS sheet
         if service_model_names:
@@ -463,6 +480,9 @@ def add_other_sheets(json_file_path, template_path, workbook):
                 if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
                     cell.value = cell.value.replace("SID", sid)
 
+    if not has_nfs and "SID_FS ASCS+PAS+NFS" in workbook.sheetnames:
+        workbook.remove(workbook["SID_FS ASCS+PAS+NFS"])
+    
     # Conditionally process HANA sheet
     if has_hana and "SID_FS layout HANA" in workbook.sheetnames:
         hana_sheet = workbook["SID_FS layout HANA"]
@@ -532,7 +552,7 @@ def add_other_sheets(json_file_path, template_path, workbook):
                 if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
                     cell.value = cell.value.replace("SID", sid)
         
-        # Update NFS Mounts (row 17)
+        # Update NFS Mounts
         db2_sheet.cell(row=51, column=4).value = f"{region_letter}{sid_lower}000a:/srv/nfs/{region_letter}{sid_lower}/sapmnt"
             
     if not has_db2 and "SID_FS Layout DB2" in workbook.sheetnames:
@@ -550,6 +570,13 @@ def add_other_sheets(json_file_path, template_path, workbook):
                 if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
                     cell.value = cell.value.replace("SID", sid)
         
+        # Update AFS Details
+        ascs_sheet.cell(row=25, column=1).value = f"Primary - {region} ({afs_servername})"
+        ascs_sheet.cell(row=27, column=1).value = f"Primary - {region} ({afs_servername})"
+
+        ascs_sheet.cell(row=35, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+        ascs_sheet.cell(row=37, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+
         workbook.remove(workbook["SID_FS ASCS"])
     
     elif has_ascs and "SID_FS ASCS" in workbook.sheetnames:
@@ -562,6 +589,10 @@ def add_other_sheets(json_file_path, template_path, workbook):
             for cell in row:
                 if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
                     cell.value = cell.value.replace("SID", sid)
+        
+        # Update AFS Details
+        ascs_sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
+        ascs_sheet.cell(row=15, column=1).value = f"Primary - {region} ({afs_servername})"
         
         workbook.remove(workbook["SID_FS ASCS DR"])
     
