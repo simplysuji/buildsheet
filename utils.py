@@ -374,7 +374,7 @@ def add_other_sheets(json_file_path, template_path, workbook):
     has_db2 = any("DB2" in role for role in server_roles)
     has_ascs_dr = any(role == "ASCS-DR" for role in server_roles)
     has_ascs  = any(role == "ASCS" for role in server_roles)
-    only_pas_aas = any(role == "PAS-DR" for role in server_roles)
+    only_pas_aas = any("PAS" in role for role in server_roles) or any("AAS" in role for role in server_roles)
 
     # Get the SID from the form data
     sid = general_config.get("SID", "").upper()
@@ -603,8 +603,8 @@ def add_other_sheets(json_file_path, template_path, workbook):
     # Conditionally process PAS/AAS sheet
     if only_pas_aas and "SID_FS PAS DR" in workbook.sheetnames:
         pas_sheet = workbook["SID_FS PAS DR"]
-        pas_sheet.title = f"{sid}_FS PAS"  # Rename the sheet
-        pas_sheet = workbook[f"{sid}_FS PAS"]  # Get the renamed sheet
+        pas_sheet.title = f"{sid}_FS PAS_AAS"  # Rename the sheet
+        pas_sheet = workbook[f"{sid}_FS PAS_AAS"]  # Get the renamed sheet
         
         # Find and replace all "SID" with the actual SID value
         for row in pas_sheet.iter_rows():
