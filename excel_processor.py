@@ -66,7 +66,7 @@ def process_non_prod_data_to_excel(json_file_path, template_path, output_path=No
         sheet.cell(row=row, column=5).value = server.get("Server Role", "")
         
         # Column 6: Service Criticality
-        sheet.cell(row=row, column=6).value = server.get("Service Criticality", "")
+        sheet.cell(row=row, column=6).value = general_config.get("Service Criticality", "")
         
         # Column 7: ITSG ID
         sheet.cell(row=row, column=7).value = general_config.get("ITSG ID", "")
@@ -206,7 +206,7 @@ def process_non_prod_data_to_excel(json_file_path, template_path, output_path=No
         sheet.cell(row=row, column=49).value = ""
         
         # Column 50: TimeZone (default to "CET")=====
-        sheet.cell(row=row, column=50).value = server.get("Timezone", "CET")
+        sheet.cell(row=row, column=50).value = general_config.get("Timezone", "CET")
         
     # Process the sheets after handling the SAP sheet
     add_other_sheets(json_file_path, template_path, workbook)
@@ -260,7 +260,7 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     sheet.cell(row=row, column=5).value = server.get("Server Role", "")
     
     # Column 6: Service Criticality
-    sheet.cell(row=row, column=6).value = server.get("Service Criticality", "")
+    sheet.cell(row=row, column=6).value = general_config.get("Service Criticality", "")
     
     # Column 7: ITSG ID
     sheet.cell(row=row, column=7).value = general_config.get("ITSG ID", "")
@@ -411,7 +411,7 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     sheet.cell(row=row, column=49).value = ""
     
     # Column 50: TimeZone (default to "CET")
-    sheet.cell(row=row, column=50).value = server.get("Timezone", "CET")
+    sheet.cell(row=row, column=50).value = general_config.get("Timezone", "CET")
     
     return row + 1
 
@@ -504,7 +504,7 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_nonprod_NOP.json"
+    json_file = "sap_form_data_nonprod_ABC.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     

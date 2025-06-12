@@ -86,6 +86,78 @@ def load_vm_sku_data():
         st.error(f"Error loading VM SKU data: {str(e)}")
         return {}
 
+def load_form_field_options():
+    """
+    Load form field options from the Excel file
+    
+    Returns:
+        dict: Dictionary containing all form field options
+    """
+    try:
+        # Read the Form Fields sheet from the Excel file
+        df = pd.read_excel("SAP Buildsheet Automation Feeder.xlsx", sheet_name="Form Fields")
+        
+        # Create a dictionary to store all options
+        form_options = {}
+        
+        # Process each column
+        for column in df.columns:
+            # Get all non-null values from the column and convert to list
+            options = df[column].dropna().tolist()
+            # Remove any empty strings
+            options = [str(option).strip() for option in options if str(option).strip()]
+            form_options[column] = options
+        
+        return form_options
+    except Exception as e:
+        st.error(f"Error loading form field options: {str(e)}")
+        # Return default options if Excel loading fails
+        return get_default_form_options()
+
+def get_default_form_options():
+    """
+    Fallback function with default form options
+    
+    Returns:
+        dict: Dictionary containing default form field options
+    """
+    return {
+        'ENVIRONMENTS': ["Fix Development", "Fix Quality", "Fix Regression", "Fix Performance", 
+                        "Project performance", "Project Development", "Project Quality", "Training", 
+                        "Sandbox", "Project UAT", "Production"],
+        'AZURE_SUBSCRIPTIONS': [
+            "SAP Technical Services-01 (Global)", "SAP Technical Services-02 (Sirius)",
+            "SAP Technical Services-03 (U2K2)", "SAP Technical Services-04 (Cordillera)",
+            "SAP Technical Services-05 (Fusion)", "SAP Technical Services-98 (Model Environment)"
+        ],
+        'SAP_REGIONS': ["Global", "Sirius", "U2K2", "Cordillera", "Fusion", "POC/Model Env"],
+        'SERVICE_CRITICALITY': ["SC 1", "SC 2", "SC 3", "SC 4"],
+        'AZURE_REGIONS': [
+            "Azure: Northern Europe (Dublin) (IENO)",
+            "Azure: Western Europe (Amsterdam) (NLWE)",
+        ],
+        'SERVER_ROLES': [
+            "AAS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-HA", "SCS+PAS+NFS", 
+            "CS+NFS", "CS+NFS+PAS", "DB2 DB", "DB2 DB-HA", "HANA DB", "HANA DB-HA", "iSCSI SBD", "SCS", "SCS+NFS", "SCS+PAS",
+            "PAS", "Web Dispatcher", "Web Dispatcher-HA", "Maxdb", "CS", "Optimizers", "IQ roles",
+            "PAS-DR", "AAS-DR", "ASCS-DR", "HANA DB-DR", "SCS-DR", "SCS-HA", "iSCSI SBD-DR", "Web Dispatcher-DR"
+        ],
+        'OS_VERSIONS': [
+            "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
+            "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2", "Windows 2016", "Windows 2019", "Windows 2022", "Windows 2025"
+        ],
+        'PARK_SCHEDULES': [
+            "Weekdays-12 hours Snooze(5pm IST to 5am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(6pm IST to 6am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(7pm IST to 7am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(8pm IST to 8am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(9pm IST to 9am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
+            "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
+        ],
+        'TIMEZONE': ["IST", "UTC", "CET", "CEST", "GMT", "CST", "PST", "EST", "BST"]
+    }
+
 # Add this function to get VM size based on VM type
 def get_vm_size(vm_type, vm_mapping):
     """
@@ -213,7 +285,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     # Suggest DR server role based on primary server role
     dr_server_roles = [
         "AAS-DR", "ASCS-DR", "HANA DB-DR", "PAS-DR", "SCS-DR", 
-        "Web Dispatcher-DR", "iSCSI SBD-DR", "DB2-DR"
+        "Web Dispatcher-DR", "iSCSI SBD-DR", "DB2 DB-DR"
     ]
 
     # Try to auto-suggest DR role
@@ -224,6 +296,8 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         suggested_dr_role = "ASCS-DR"
     elif "HANA DB" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "HANA DB-DR"
+    elif "DB2 DB" in primary_server_role and "DR" not in primary_server_role:
+        suggested_dr_role = "DB2 DB-DR"
     elif "PAS" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "PAS-DR"
     elif "SCS" in primary_server_role and "DR" not in primary_server_role:
@@ -231,7 +305,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     elif "Web Dispatcher" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "Web Dispatcher-DR"
     elif "iSCSI SBD" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "iSCSI SBD-DR"
+        suggested_dr_role = "iSCSI SBD-DR"  
     
     # Set default index for DR role
     default_dr_index = 0
@@ -240,7 +314,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     
     with st.expander(f"🔄 DR Server {server_index+1} Configuration", expanded=True):      
         # First row: Server Role, A Record/CNAME, Service Criticality
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             dr_server_role = st.selectbox(
                 "DR Server Role", 
@@ -254,12 +328,6 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                 "A Record / CNAME", 
                 RECORD_TYPES, 
                 key=f"dr_record_type_{tab_key}_{server_index}"
-            )
-        with col3:
-            dr_service_criticality = st.selectbox(
-                "Service Criticality", 
-                SERVICE_CRITICALITY, 
-                key=f"dr_service_criticality_{tab_key}_{server_index}"
             )
         
         # Second row: OS Version, Availability Set (if applicable)
@@ -361,15 +429,15 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                 key=f"dr_opt_in_out_{tab_key}_{server_index}"
             )
         with col2:
-            dr_park_schedule = st.selectbox(
-                "Park My Cloud Schedule", 
-                PARK_SCHEDULES, 
-                disabled=dr_opt_in_out != "In",
-                key=f"dr_park_schedule_{tab_key}_{server_index}"
+            dr_internet_access = st.selectbox(
+                "Outbound Internet Access Required", 
+                ["Yes", "No"], 
+                key=f"dr_internet_access_{tab_key}_{server_index}"
             )
         
+        
         # Sixth row: Team information, Internet access, Timezone
-        col1, col2, col3 = st.columns(3)
+        col1, col2, = st.columns(2)
         with col1:
             dr_team_name = st.text_input(
                 "Park My cloud team name and Member", 
@@ -377,24 +445,19 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                 key=f"dr_team_name_{tab_key}_{server_index}"
             )
         with col2:
-            dr_internet_access = st.selectbox(
-                "Outbound Internet Access Required", 
-                ["Yes", "No"], 
-                key=f"dr_internet_access_{tab_key}_{server_index}"
+            dr_park_schedule = st.selectbox(
+                "Park My Cloud Schedule", 
+                PARK_SCHEDULES, 
+                disabled=dr_opt_in_out != "In",
+                key=f"dr_park_schedule_{tab_key}_{server_index}"
             )
-        with col3:
-            dr_timezone = st.selectbox(
-                "Timezone", 
-                TIMEZONE,
-                key=f"dr_timezone_{tab_key}_{server_index}"
-            )
+        
     
     # Return DR server configuration
     dr_server_config = {
         "Server Number": f"DR-{server_index+1}",
         "Server Role": dr_server_role,
         "Record Type": dr_record_type,
-        "Service Criticality": dr_service_criticality,
         "OS Version": dr_os_version,
         "Availability Set": dr_availability_set if contains_pas(dr_server_role) else "N/A",
         "AFS Server Name": dr_afs_needed if contains_ascs(dr_server_role) else "N/A",
@@ -407,7 +470,6 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         "Park My Cloud Schedule": dr_park_schedule if dr_opt_in_out == "In" else "N/A",
         "Park My cloud team name and Member": dr_team_name if dr_opt_in_out == "In" else "N/A",
         "Outbound Internet Access Required": dr_internet_access,
-        "Timezone": dr_timezone,
         "Server Type": "DR"  # Add identifier for DR servers
     }
     
@@ -435,6 +497,9 @@ def render_form_content(tab_key, is_production=False):
     if f'server_data_{tab_key}' not in st.session_state:
         st.session_state[f'server_data_{tab_key}'] = []
 
+    # Load form field options from Excel
+    form_options = load_form_field_options()
+    
     # Define options based on Production vs Non-Production
     if is_production:
         # Production-specific configurations
@@ -442,35 +507,22 @@ def render_form_content(tab_key, is_production=False):
         SUBNETS = ["Production STS"]
 
     else:
-        # Non-Production configurations (existing)
-        ENVIRONMENTS = ["Fix Development", "Fix Quality", "Fix Regression", "Fix Performance", 
-                       "Project performance", "Project Development", "Project Quality", "Training", 
-                       "Sandbox", "Project UAT"]
+        # Non-Production configurations
+        ENVIRONMENTS = [env for env in form_options['ENVIRONMENTS'] if env != "Production"]
         SUBNETS = ["Non-Production STS"]
     
-    # Common options for both
-    AZURE_SUBSCRIPTIONS = [
-            "SAP Technical Services-01 (Global)", "SAP Technical Services-02 (Sirius)",
-            "SAP Technical Services-03 (U2K2)", "SAP Technical Services-04 (Cordillera)",
-            "SAP Technical Services-05 (Fusion)", "SAP Technical Services-98 (Model Environment)"
-    ]
-    SAP_REGIONS = ["Sirius", "U2K2", "Cordillera", "Global", "POC/Model Env", "Fusion"]
-    SERVICE_CRITICALITY = ["SC 1", "SC 2", "SC 3", "SC 4"]
-    AZURE_REGIONS = [
-        "Azure: Northern Europe (Dublin) (IENO)",
-        "Azure: Western Europe (Amsterdam) (NLWE)",
-    ]
-    AZ_ZONES = ["1", "2", "3"]
-    SERVER_ROLES = [
-        "AAS", "ASCS", "ASCS+NFS", "ASCS+PAS", "ASCS+PAS+NFS", "ASCS-HA", "SCS+PAS+NFS", 
-        "CS+NFS", "CS+NFS+PAS", "DB2 DB", "HANA DB", "HANA DB-HA", "iSCSI SBD", "SCS", "SCS+NFS", "SCS+PAS",
-        "PAS", "Web Dispatcher",  "Web Dispatcher-HA", "Maxdb", "CS", "Optimizers", "IQ roles",
-        "PAS-DR", "AAS-DR", "ASCS-DR", "HANA DB-DR", "SCS-DR", "SCS-HA", "iSCSI SBD-DR", "Web Dispatcher-DR"
-    ]
-    OS_VERSIONS = [
-        "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
-        "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2", "Windows 2016", "Windows 2019", "Windows 2022", "Windows 2025"
-    ]
+    # Use loaded options from Excel
+    AZURE_SUBSCRIPTIONS = form_options['AZURE_SUBSCRIPTIONS']
+    SAP_REGIONS = form_options['SAP_REGIONS']
+    SERVICE_CRITICALITY = form_options['SERVICE_CRITICALITY']
+    AZURE_REGIONS = form_options['AZURE_REGIONS']
+    AZ_ZONES = ["1", "2", "3"] 
+    SERVER_ROLES = form_options['SERVER_ROLES']
+    OS_VERSIONS = form_options['OS_VERSIONS']
+    RECORD_TYPES = ["A Record", "CNAME"]
+    PARK_SCHEDULES = form_options['PARK_SCHEDULES']
+    TIMEZONE = form_options['TIMEZONE']
+
     
     vm_sku_mapping = load_vm_sku_data()
     INSTANCE_TYPES = list(vm_sku_mapping.keys()) if vm_sku_mapping else [
@@ -480,32 +532,23 @@ def render_form_content(tab_key, is_production=False):
         "E4as_v4", "E4ds_v4", "E4s_v3"
     ]
 
-    RECORD_TYPES = ["A Record", "CNAME"]
-    PARK_SCHEDULES = ["Weekdays-12 hours Snooze(5pm IST to 5am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(6pm IST to 6am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(7pm IST to 7am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(8pm IST to 8am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(9pm IST to 9am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
-    ]
-    TIMEZONE = ["IST", "UTC", "CET", "CEST", "GMT", "CST", "PST", "EST", "BST"]
-
     # GENERAL CONFIGURATION SECTION
     st.subheader("General Configuration")
 
     # First Row
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         sap_region = st.selectbox("SAP Region", SAP_REGIONS, key=f"sap_region_{tab_key}")
     with col2:
         azure_region = st.selectbox("Azure Region", AZURE_REGIONS, key=f"azure_region_{tab_key}")
+    with col3:
+            azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
 
     # Auto-determine region code based on azure_region selection
     region_code = get_region_code(azure_region)
 
     # Display the auto-selected region code for user confirmation
-    st.info(f"Region Code set to: **{region_code}** (based on {azure_region})")
+    # st.info(f"Region Code set to: **{region_code}** (based on {azure_region})")
 
     # Second Row
     col1, col2, col3 = st.columns(3)
@@ -527,22 +570,32 @@ def render_form_content(tab_key, is_production=False):
                                     key=f"num_servers_input_{tab_key}",
                                     on_change=lambda: update_num_servers(tab_key))
 
-    # Fourth Row - Only for Non-Production
+    # Fourth Row
+    col1, col2 = st.columns(2)
+    with col1:
+        service_criticality = st.selectbox("Service Criticality", SERVICE_CRITICALITY, key=f"service_criticality_{tab_key}")
+    with col2:
+        timezone = st.selectbox(
+            "Timezone", 
+            TIMEZONE,
+            key=f"timezone_{tab_key}"
+        )
+    
+    # Fifth Row - Only for Non-Production
     if not is_production:
-        col1, col2, col3 = st.columns(3)
-        with col2:
-            az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}")
-        with col1:
-            azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
-        with col3:
-            record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}")
-    else:
-        # Production only has Azure Subscription (no fourth row layout)
         col1, col2 = st.columns(2)
         with col1:
-            azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
+            az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}")
         with col2:
-            st.empty()
+            record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}")
+    # else:
+    #     # Production only has Azure Subscription (no fourth row layout)
+    #     col1, col2 = st.columns(2)
+    #     with col1:
+    #         azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
+    #     with col2:
+    #         st.empty()
+    
 
     # SERVER CONFIGURATION SECTION
     st.subheader("Primary Server Configuration")
@@ -559,14 +612,14 @@ def render_form_content(tab_key, is_production=False):
             with col1:
                 server_role = st.selectbox("Server Role", SERVER_ROLES, key=f"server_role_{tab_key}_{i}")
             with col2:
-                service_criticality = st.selectbox("Service Criticality", SERVICE_CRITICALITY, key=f"service_criticality_{tab_key}_{i}")
+                # service_criticality = st.selectbox("Service Criticality", SERVICE_CRITICALITY, key=f"service_criticality_{tab_key}_{i}")
             
-            # Show Availability Set option if server role contains PAS
-            availability_set = "No"  # Default value
-            if contains_pas(server_role):
-                availability_set = st.selectbox("Availability Set", ["Yes", "No"], 
-                                              key=f"availability_set_{tab_key}_{i}",
-                                              help="Required for PAS servers for high availability")
+                # Show Availability Set option if server role contains PAS
+                availability_set = "No"  # Default value
+                if contains_pas(server_role):
+                    availability_set = st.selectbox("Availability Set", ["Yes", "No"], 
+                                                key=f"availability_set_{tab_key}_{i}",
+                                                help="Required for PAS servers for high availability")
                 
             # Show AFS Servername option if server role contains PAS
             afs_needed = "NA"  # Default value
@@ -612,13 +665,14 @@ def render_form_content(tab_key, is_production=False):
                     ["On Demand", "Reservation"], 
                     key=f"reservation_type_{tab_key}_{i}"
                 )
-            with col2:
-                reservation_term = st.selectbox(
-                    "Reservation Term", 
-                    ["One Year", "Three Years"],
-                    disabled=reservation_type != "Reservation", 
-                    key=f"reservation_term_{tab_key}_{i}"
-                )
+            if reservation_type == "Reservation":
+                with col2:
+                    reservation_term = st.selectbox(
+                        "Reservation Term", 
+                        ["One Year", "Three Years"],
+                        disabled=reservation_type != "Reservation", 
+                        key=f"reservation_term_{tab_key}_{i}"
+                    )
 
             # Cloud management - per server (different defaults for prod vs non-prod)
             col1, col2 = st.columns(2)
@@ -632,40 +686,34 @@ def render_form_content(tab_key, is_production=False):
                     help="In - Can be parked/managed using ParkMyCloud\nOut - Cannot be parked/Managed using Park My Cloud",
                     key=f"opt_in_out_{tab_key}_{i}"
                 )
-            with col2:
-                park_schedule = st.selectbox(
-                    "Park My Cloud Schedule", 
-                    PARK_SCHEDULES, 
-                    disabled=opt_in_out != "In",
-                    key=f"park_schedule_{tab_key}_{i}"
-                )
-
             # Team information and Internet access - per server
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                team_name = st.text_input(
-                    "Park My cloud team name and Member", 
-                    disabled=opt_in_out != "In",
-                    key=f"team_name_{tab_key}_{i}"
-                )
             with col2:
                 internet_access = st.selectbox(
                     "Outbound Internet Access Required", 
                     ["Yes", "No"], 
                     key=f"internet_access_{tab_key}_{i}"
                 )
-            with col3:
-                timezone = st.selectbox(
-                    "Timezone", 
-                    TIMEZONE,
-                    key=f"timezone_{tab_key}_{i}"
+
+            # Park My Cloud Schedule and Team Name - per server
+            col1, col2 = st.columns(2)
+            with col2:
+                team_name = st.text_input(
+                    "Park My cloud team name and Member", 
+                    disabled=opt_in_out != "In",
+                    key=f"team_name_{tab_key}_{i}"
+                )
+            with col1:
+                park_schedule = st.selectbox(
+                    "Park My Cloud Schedule", 
+                    PARK_SCHEDULES, 
+                    disabled=opt_in_out != "In",
+                    key=f"park_schedule_{tab_key}_{i}"
                 )
             
             # Store server data in list for later
             server_config = {
                 "Server Number": i+1,
                 "Server Role": server_role,
-                "Service Criticality": service_criticality,
                 "Availability Set": availability_set if contains_pas(server_role) else "N/A",
                 "AFS Server Name": afs_needed if contains_ascs(server_role) else "N/A",
                 "OS Version": os_version,
@@ -677,7 +725,6 @@ def render_form_content(tab_key, is_production=False):
                 "Park My Cloud Schedule": park_schedule if opt_in_out == "In" else "N/A",
                 "Park My cloud team name and Member": team_name if opt_in_out == "In" else "N/A",
                 "Outbound Internet Access Required": internet_access,
-                "Timezone": timezone,
                 "Server Type": "Primary"
             }
             
@@ -728,7 +775,9 @@ def render_form_content(tab_key, is_production=False):
             "Number of DR Servers": num_servers if is_production else 0,
             "Total Servers": num_servers * 2 if is_production else num_servers,
             "Azure Subscription": azure_subscription,
-            "Subnet/Zone": subnet
+            "Subnet/Zone": subnet,
+            "Timezone": timezone,
+            "Service Criticality": service_criticality,
         }
         
         # Add non-production specific fields to general config
