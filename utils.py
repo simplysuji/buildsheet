@@ -562,8 +562,8 @@ def add_other_sheets(json_file_path, template_path, workbook):
         workbook.remove(workbook["SID_FS Layout DB2"])
     
     # Conditionally process ASCS sheet
-    if has_ascs_dr and "SID_FS ASCS DR" in workbook.sheetnames:
-        ascs_sheet = workbook["SID_FS ASCS DR"]
+    if has_ascs_dr and "SID_FS ASCS Prod" in workbook.sheetnames:
+        ascs_sheet = workbook["SID_FS ASCS Prod"]
         ascs_sheet.title = f"{sid}_FS ASCS"  # Rename the sheet
         ascs_sheet = workbook[f"{sid}_FS ASCS"]  # Get the renamed sheet
         
@@ -580,10 +580,10 @@ def add_other_sheets(json_file_path, template_path, workbook):
         ascs_sheet.cell(row=35, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
         ascs_sheet.cell(row=37, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
 
-        workbook.remove(workbook["SID_FS ASCS"])
+        workbook.remove(workbook["SID_FS ASCS Non_Prod"])
     
-    elif has_ascs and "SID_FS ASCS" in workbook.sheetnames:
-        ascs_sheet = workbook["SID_FS ASCS"]
+    elif has_ascs and "SID_FS ASCS Non_Prod" in workbook.sheetnames:
+        ascs_sheet = workbook["SID_FS ASCS Non_Prod"]
         ascs_sheet.title = f"{sid}_FS ASCS"  # Rename the sheet
         ascs_sheet = workbook[f"{sid}_FS ASCS"]  # Get the renamed sheet
         
@@ -597,15 +597,15 @@ def add_other_sheets(json_file_path, template_path, workbook):
         ascs_sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
         ascs_sheet.cell(row=15, column=1).value = f"Primary - {region} ({afs_servername})"
         
-        workbook.remove(workbook["SID_FS ASCS DR"])
+        workbook.remove(workbook["SID_FS ASCS Prod"])
     
     if not has_ascs and not has_ascs_dr:
-        workbook.remove(workbook["SID_FS ASCS DR"])
-        workbook.remove(workbook["SID_FS ASCS"])
-    
+        workbook.remove(workbook["SID_FS ASCS Prod"])
+        workbook.remove(workbook["SID_FS ASCS Non_Prod"])
+
     # Conditionally process PAS/AAS sheet
-    if only_pas_aas and "SID_FS PAS DR" in workbook.sheetnames:
-        pas_sheet = workbook["SID_FS PAS DR"]
+    if only_pas_aas and "SID_FS PAS" in workbook.sheetnames:
+        pas_sheet = workbook["SID_FS PAS"]
         pas_sheet.title = f"{sid}_FS PAS_AAS"  # Rename the sheet
         pas_sheet = workbook[f"{sid}_FS PAS_AAS"]  # Get the renamed sheet
         
@@ -615,6 +615,6 @@ def add_other_sheets(json_file_path, template_path, workbook):
                 if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
                     cell.value = cell.value.replace("SID", sid)
     
-    if not only_pas_aas and "SID_FS PAS DR" in workbook.sheetnames:
-        workbook.remove(workbook["SID_FS PAS DR"])
+    if not only_pas_aas and "SID_FS PAS" in workbook.sheetnames:
+        workbook.remove(workbook["SID_FS PAS"])
     
