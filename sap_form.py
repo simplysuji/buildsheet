@@ -184,8 +184,6 @@ def contains_pas(server_role):
 def contains_ascs(server_role):
     return "ASCS" == server_role.upper()
 
-# Add this function after the get_region_code function and before load_vm_sku_data
-
 def get_dr_az_zone(azure_region, azure_subscription):
     """
     Get the DR AZ zone based on the primary server's region and subscription
@@ -244,6 +242,250 @@ def get_dr_az_zone(azure_region, azure_subscription):
     # Get the AZ zone
     return az_mapping.get((subscription_type, location), "1")  # Default to "1" if not found
 
+def render_file_management_tab():
+    """
+    Render the file management tab for updating Excel files
+    """
+    st.header("📁 File Management")
+    st.markdown("Update the configuration files used by the application")
+    
+    # Initialize session state for download tracking
+    if 'feeder_downloaded' not in st.session_state:
+        st.session_state.feeder_downloaded = False
+    if 'template_downloaded' not in st.session_state:
+        st.session_state.template_downloaded = False
+    
+    # Create two columns for the cards
+    col1, col2 = st.columns(2)
+    
+    # SAP Buildsheet Automation Feeder.xlsx Card
+    with col1:
+        with st.container():
+            st.markdown("""
+                <div style="
+                    border: 2px solid #e0e0e0;
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin: 10px 0;
+                    background-color: #f8f9fa;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h3 style="color: #2c3e50; text-align: center; margin-bottom: 20px;">
+                        🗂️ SAP Buildsheet Automation Feeder
+                    </h3>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("**Purpose:** Contains form field options, VM SKU mappings, and other configuration data")
+            
+            # Check if file exists
+            feeder_file_path = "SAP Buildsheet Automation Feeder.xlsx"
+            if os.path.exists(feeder_file_path):
+                file_size = os.path.getsize(feeder_file_path)
+                file_size_mb = round(file_size / (1024 * 1024), 2)
+                modification_time = os.path.getmtime(feeder_file_path)
+                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%Y-%m-%d %H:%M:%S IST')
+                
+                st.info(f"📊 **Current File Info:**\n- Size: {file_size_mb} MB\n- Last Modified: {mod_date}")
+                
+                # Download button
+                with open(feeder_file_path, "rb") as file:
+                    if st.download_button(
+                        label="📥 Download Current Version",
+                        data=file,
+                        file_name="SAP Buildsheet Automation Feeder.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_feeder",
+                        help="Download the current version to update it",
+                        use_container_width=True
+                    ):
+                        st.session_state.feeder_downloaded = True
+                        st.success("✅ File downloaded! You can now upload an updated version.")
+                        st.rerun()
+            else:
+                st.error("❌ Current file not found!")
+                st.session_state.feeder_downloaded = True  # Allow upload if no current file exists
+            
+            # Upload section
+            st.markdown("---")
+            
+            if st.session_state.feeder_downloaded:
+                st.markdown("**📤 Upload Updated Version:**")
+                uploaded_feeder = st.file_uploader(
+                    "Choose updated SAP Buildsheet Automation Feeder file",
+                    type=['xlsx'],
+                    key="upload_feeder",
+                    help="Upload the updated Excel file with your changes"
+                )
+                
+                if uploaded_feeder is not None:
+                    # Validate the uploaded file
+                    try:
+                        # Try to read the file to validate it's a proper Excel file
+                        test_df = pd.read_excel(uploaded_feeder, sheet_name=None)
+                        
+                        # Check for required sheets
+                        required_sheets = ["DNS -Azure", "Instance Number", "Form Fields", "SKU Name"]
+                        missing_sheets = [sheet for sheet in required_sheets if sheet not in test_df.keys()]
+                        
+                        if missing_sheets:
+                            st.error(f"❌ Missing required sheets: {', '.join(missing_sheets)}")
+                        else:
+                            # Show file info
+                            file_size_mb = round(uploaded_feeder.size / (1024 * 1024), 2)
+                            st.success(f"✅ Valid Excel file uploaded! Size: {file_size_mb} MB")
+                            
+                            # Save the file
+                            if st.button("💾 Save Updated File", key="save_feeder", use_container_width=True):
+                                try:
+                                    # Create backup of existing file if it exists
+                                    if os.path.exists(feeder_file_path):
+                                        backup_path = f"backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_SAP Buildsheet Automation Feeder.xlsx"
+                                        os.rename(feeder_file_path, backup_path)
+                                        st.info(f"🔄 Existing file backed up as: {backup_path}")
+                                    
+                                    # Save the new file
+                                    with open(feeder_file_path, "wb") as f:
+                                        f.write(uploaded_feeder.getbuffer())
+                                    
+                                    st.success("🎉 SAP Buildsheet Automation Feeder.xlsx updated successfully!")
+                                    st.balloons()
+                                    
+                                    # Reset download state
+                                    st.session_state.feeder_downloaded = False
+                                    st.rerun()
+                                    
+                                except Exception as e:
+                                    st.error(f"❌ Error saving file: {str(e)}")
+                                    
+                    except Exception as e:
+                        st.error(f"❌ Invalid Excel file: {str(e)}")
+            else:
+                st.warning("⚠️ Please download the current version first before uploading a new one.")
+    
+    # Template.xlsx Card
+    with col2:
+        with st.container():
+            st.markdown("""
+                <div style="
+                    border: 2px solid #e0e0e0;
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin: 10px 0;
+                    background-color: #f8f9fa;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h3 style="color: #2c3e50; text-align: center; margin-bottom: 20px;">
+                        📋 Template File
+                    </h3>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("**Purpose:** Excel template used for generating the final buildsheet output")
+            
+            # Check if file exists
+            template_file_path = "Template.xlsx"
+            if os.path.exists(template_file_path):
+                file_size = os.path.getsize(template_file_path)
+                file_size_mb = round(file_size / (1024 * 1024), 2)
+                modification_time = os.path.getmtime(template_file_path)
+                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%Y-%m-%d %H:%M:%S IST')
+
+                st.info(f"📊 **Current File Info:**\n- Size: {file_size_mb} MB\n- Last Modified: {mod_date}")
+                
+                # Download button
+                with open(template_file_path, "rb") as file:
+                    if st.download_button(
+                        label="📥 Download Current Version",
+                        data=file,
+                        file_name="Template.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_template",
+                        help="Download the current version to update it",
+                        use_container_width=True
+                    ):
+                        st.session_state.template_downloaded = True
+                        st.success("✅ File downloaded! You can now upload an updated version.")
+                        st.rerun()
+            else:
+                st.error("❌ Current file not found!")
+                st.session_state.template_downloaded = True  # Allow upload if no current file exists
+            
+            # Upload section
+            st.markdown("---")
+            
+            if st.session_state.template_downloaded:
+                st.markdown("**📤 Upload Updated Version:**")
+                uploaded_template = st.file_uploader(
+                    "Choose updated Template file",
+                    type=['xlsx'],
+                    key="upload_template",
+                    help="Upload the updated Excel template file"
+                )
+                
+                if uploaded_template is not None:
+                    # Validate the uploaded file
+                    try:
+                        # Try to read the file to validate it's a proper Excel file
+                        test_df = pd.read_excel(uploaded_template, sheet_name=None)
+                        
+                        # Check for required sheets
+                        required_sheets = ["SAP"]
+                        missing_sheets = [sheet for sheet in required_sheets if sheet not in test_df.keys()]
+
+                        if missing_sheets:
+                            st.error(f"❌ Missing required sheet(s): {', '.join(missing_sheets)}")
+                            return  # Stop processing if required sheets are missing
+
+                        # Show file info
+                        file_size_mb = round(uploaded_template.size / (1024 * 1024), 2)
+                        st.success(f"✅ Valid Excel file uploaded! Size: {file_size_mb} MB")
+                        
+                        # Save the file
+                        if st.button("💾 Save Updated File", key="save_template", use_container_width=True):
+                            try:
+                                # Create backup of existing file if it exists
+                                if os.path.exists(template_file_path):
+                                    backup_path = f"backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_Template.xlsx"
+                                    os.rename(template_file_path, backup_path)
+                                    st.info(f"🔄 Existing file backed up as: {backup_path}")
+                                
+                                # Save the new file
+                                with open(template_file_path, "wb") as f:
+                                    f.write(uploaded_template.getbuffer())
+                                
+                                st.success("🎉 Template.xlsx updated successfully!")
+                                st.balloons()
+                                
+                                # Reset download state
+                                st.session_state.template_downloaded = False
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error saving file: {str(e)}")
+                                
+                    except Exception as e:
+                        st.error(f"❌ Invalid Excel file: {str(e)}")
+            else:
+                st.warning("⚠️ Please download the current version first before uploading a new one.")
+    
+    # Instructions section
+    st.markdown("---")
+    with st.expander("ℹ️ Instructions", expanded=False):
+        st.markdown("""
+        **How to update files:**
+        
+        1. **Download Current Version**: Click the download button to get the current file
+        2. **Update the File**: Make your changes to the downloaded file using Excel
+        3. **Upload Updated Version**: Once downloaded, the upload button will become active
+        4. **Save**: Click the save button to replace the current file
+        
+        **Important Notes:**
+        - 🔄 You must download the current version before you can upload a new one
+        - ✅ DO not delete any existing sheets from the Excel files
+        - 🚀 Changes will take effect immediately after saving
+        """)
+
 
 def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     """
@@ -257,7 +499,6 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     Returns:
         dict: DR server configuration data
     """
-    SERVICE_CRITICALITY = ["SC 1", "SC 2", "SC 3", "SC 4"]
     RECORD_TYPES = ["A Record", "CNAME"]
     OS_VERSIONS = [
         "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
@@ -277,7 +518,6 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
         "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
     ]
-    TIMEZONE = ["IST", "UTC", "CET", "GMT", "CST", "PST", "EST", "BST"]
     
     # Get the primary server role to create DR equivalent
     primary_server_role = st.session_state.get(f"server_role_{tab_key}_{server_index}", "")
@@ -896,8 +1136,8 @@ st.set_page_config(page_title="SAP Buildsheet Request Form", layout="wide")
 st.title("SAP Buildsheet Request Form")
 st.markdown("Complete the form below to request SAP buildsheet generation")
 
-# Create tabs for Production and Non-Production
-tab1, tab2 = st.tabs(["🏭 Production", "🧪 Non-Production"])
+# Create tabs for Production, Non-Production, and File Management
+tab1, tab2, tab3 = st.tabs(["🏭 Production", "🧪 Non-Production", "📁 File Management"])
 
 with tab1:
     st.header("Production Environment Request")
@@ -906,3 +1146,6 @@ with tab1:
 with tab2:
     st.header("Non-Production Environment Request")
     render_form_content("nonprod", is_production=False)
+    
+with tab3:
+    render_file_management_tab()
