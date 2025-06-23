@@ -379,8 +379,13 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
         sheet.cell(row=row, column=22).value = ""
     
     # Column 23: Azure Availability Zone
-    sheet.cell(row=row, column=23).value = server.get("AZ Selection", "")
+    if "-HA" in server_role:
+        az_zone = server.get("HA_Zone","")
+    else:
+        az_zone = server.get("AZ Selection", "")
     
+    sheet.cell(row=row, column=23).value = az_zone
+
     # Column 24: Accelerated Networking (default to "Yes")
     sheet.cell(row=row, column=24).value = "Yes"
     
@@ -518,13 +523,13 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_nonprod_NPR.json"
+    json_file = "sap_form_data_prod_E4E.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     
     try:
-        output_path = process_non_prod_data_to_excel(json_file, template_file, output_file)
-        # output_path = process_prod_data_to_excel(json_file, template_file, output_file)
+        # output_path = process_non_prod_data_to_excel(json_file, template_file, output_file)
+        output_path = process_prod_data_to_excel(json_file, template_file, output_file)
         print(f"Processing completed successfully. Output saved to: {output_path}")
     except Exception as e:
         print(f"Error: {str(e)}")
