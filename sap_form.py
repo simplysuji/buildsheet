@@ -293,6 +293,17 @@ def get_az_zones(azure_subscription, azure_region, az_mapping):
         # Default fallback if not found
         return "1", "2"
 
+def remove_dr_server(tab_key, server_index):
+    """Remove a DR server from the enabled list"""
+    if server_index in st.session_state[f'dr_servers_enabled_{tab_key}']:
+        st.session_state[f'dr_servers_enabled_{tab_key}'].remove(server_index)
+        
+        # Clear session state for this specific DR server
+        keys_to_clear = [key for key in st.session_state.keys() 
+                        if key.startswith(f'dr_') and key.endswith(f'_{tab_key}_{server_index}')]
+        for key in keys_to_clear:
+            del st.session_state[key]
+
 def render_file_management_tab():
     """
     Render the file management tab for updating Excel files
@@ -595,7 +606,17 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     if suggested_dr_role and suggested_dr_role in dr_server_roles:
         default_dr_index = dr_server_roles.index(suggested_dr_role)
     
-    with st.expander(f"🔄 DR Server {server_index+1} Configuration", expanded=True):      
+    with st.expander(f"🔄 DR Server {server_index+1} Configuration", expanded=True):
+        # Add remove button at the top
+        col_header, col_remove = st.columns([13, 1])
+        with col_remove:
+            if st.button(f"🗑️ Remove", 
+                        key=f"remove_dr_{tab_key}_{server_index}",
+                        help=f"Remove DR Server {server_index+1}",
+                        type="secondary"):
+                remove_dr_server(tab_key, server_index)
+                st.rerun()   
+                
         # First row: Server Role, A Record/CNAME, Service Criticality
         col1, col2 = st.columns(2)
         with col1:
@@ -769,6 +790,8 @@ def render_form_content(tab_key, is_production=False):
         st.session_state[f'json_file_path_{tab_key}'] = None
     if f'server_data_{tab_key}' not in st.session_state:
         st.session_state[f'server_data_{tab_key}'] = []
+    if f'dr_servers_enabled_{tab_key}' not in st.session_state:
+        st.session_state[f'dr_servers_enabled_{tab_key}'] = list(range(st.session_state[f'num_servers_{tab_key}']))
 
     # Load form field options from Excel
     form_options = load_form_field_options()
@@ -1103,8 +1126,30 @@ def render_form_content(tab_key, is_production=False):
     if is_production:
         st.subheader("Disaster Recovery (DR) Server Configuration")
         
-        # Create DR configuration for each primary server
-        for i in range(st.session_state[f'num_servers_{tab_key}']):
+        # Update the enabled DR servers list when number of servers changes
+        current_num_servers = st.session_state[f'num_servers_{tab_key}']
+        
+        # If number of servers increased, add new DR servers to enabled list
+        max_existing_index = max(st.session_state[f'dr_servers_enabled_{tab_key}']) if st.session_state[f'dr_servers_enabled_{tab_key}'] else -1
+        for i in range(max_existing_index + 1, current_num_servers):
+            if i not in st.session_state[f'dr_servers_enabled_{tab_key}']:
+                st.session_state[f'dr_servers_enabled_{tab_key}'].append(i)
+        
+        # If number of servers decreased, remove DR servers that exceed the primary server count
+        st.session_state[f'dr_servers_enabled_{tab_key}'] = [
+            i for i in st.session_state[f'dr_servers_enabled_{tab_key}'] 
+            if i < current_num_servers
+        ]
+        
+        # Sort the enabled list to maintain order
+        st.session_state[f'dr_servers_enabled_{tab_key}'].sort()
+        
+        # Show summary
+        # enabled_count = len(st.session_state[f'dr_servers_enabled_{tab_key}'])
+        # st.info(f"DR Servers: {enabled_count} of {current_num_servers} primary servers")
+        
+        # Create DR configuration only for enabled DR servers
+        for i in st.session_state[f'dr_servers_enabled_{tab_key}']:
             dr_config = render_dr_server_config(tab_key, vm_sku_mapping, i)
             dr_server_data.append(dr_config)
 
@@ -1112,7 +1157,8 @@ def render_form_content(tab_key, is_production=False):
     with st.form(f"submit_form_{tab_key}"):
         st.write("Review the configuration above and submit when ready.")
         if is_production:
-            st.write(f"**Summary:** {st.session_state[f'num_servers_{tab_key}']} Primary servers + {st.session_state[f'num_servers_{tab_key}']} DR servers = {st.session_state[f'num_servers_{tab_key}'] * 2} total servers")
+            enabled_dr_count = len(st.session_state[f'dr_servers_enabled_{tab_key}'])
+            st.write(f"**Summary:** {st.session_state[f'num_servers_{tab_key}']} Primary servers + {enabled_dr_count} DR servers = {st.session_state[f'num_servers_{tab_key}'] + enabled_dr_count} total servers")
         submit_button = st.form_submit_button(f"Submit {'Production' if is_production else 'Non-Production'} Request")
 
     # Handle form submission
@@ -1127,8 +1173,8 @@ def render_form_content(tab_key, is_production=False):
             "SID": sid,
             "ITSG ID": itsg_id,
             "Number of Primary Servers": num_servers,
-            "Number of DR Servers": num_servers if is_production else 0,
-            "Total Servers": num_servers * 2 if is_production else num_servers,
+            "Number of DR Servers": len(st.session_state[f'dr_servers_enabled_{tab_key}']) if is_production else 0,
+            "Total Servers": num_servers + (len(st.session_state[f'dr_servers_enabled_{tab_key}']) if is_production else 0),
             "Azure Subscription": azure_subscription,
             "Subnet/Zone": subnet,
             "Timezone": timezone,
@@ -1230,6 +1276,8 @@ def render_form_content(tab_key, is_production=False):
             # Also clear the just_submitted flag specifically
             if f'just_submitted_{tab_key}' in st.session_state:
                 del st.session_state[f'just_submitted_{tab_key}']
+            if f'dr_servers_enabled_{tab_key}' in st.session_state:
+                del st.session_state[f'dr_servers_enabled_{tab_key}']
             st.rerun()
 
 
