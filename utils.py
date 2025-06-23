@@ -350,6 +350,102 @@ def get_environment_code(environment):
     }
     return environment_mapping.get(environment, "d") # default to 'd' if not found
 
+    
+def add_load_balancer_sheet(workbook, general_config, primary_servers):
+    """
+    Add Azure Load Balancer sheet data based on server roles.
+    
+    Args:
+        workbook: Excel workbook object
+        general_config: General configuration dictionary
+        primary_servers: List of primary server data
+    """
+    # Check if Azure Load Balancer sheet exists
+    if "Azure Load Balancer" not in workbook.sheetnames:
+        return
+    
+    lb_sheet = workbook["Azure Load Balancer"]
+    
+    
+    # Check if any server has required roles
+    required_roles = ["ASCS", "DB2", "HANA", "MaxDB"]
+    has_required_roles = any(
+        any(role in server.get("Server Role", "") for role in required_roles)
+        for server in primary_servers
+    )
+    
+    if not has_required_roles:
+        return
+    
+    # Get common configuration values
+    region_code = general_config.get("Azure Region Code", "").lower()
+    environment_code = get_environment_code(general_config.get("Environment", ""))
+    itsg_id = general_config.get("ITSG ID", "")
+    sid = general_config.get("SID", "").upper()
+    subscription = general_config.get("Azure Subscription", "")
+    subscription_number = subscription.split("-")[1].split(" ")[0] if "-" in subscription else "01"
+    
+    # Generate resource group name
+    resource_group_name = f"{region_code}-sp{subscription_number}-{environment_code}-{itsg_id}-{sid}-IS01-rg"
+    
+    current_row = 13
+    
+    # Process each server and add load balancer entries
+    for server in primary_servers:
+        server_role = server.get("Server Role", "")
+        
+        # Check which roles this server has
+        has_ascs = "ASCS" in server_role
+        has_db = any(db_role in server_role for db_role in ["DB2", "HANA", "MaxDB"])
+        
+        if not (has_ascs or has_db):
+            continue
+        
+        # Generate service model name for this server
+        azure_region = general_config.get("Azure Region", "")
+        city = "Dublin"  # Default
+        if "Amsterdam" in azure_region:
+            city = "Amsterdam"
+        elif "DR" in server_role:
+            city = "Amsterdam" if "Dublin" in azure_region else "Dublin"
+        
+        service_model_name = generate_service_model_names(
+            server.get("Server Role", ""), 
+            general_config.get("SID", ""),
+            general_config.get("SAP Region", "Sirius"),
+            city,
+            aas_counter=None
+        )
+        smn = service_model_name.split(".")[0]
+        
+        # Add ASCS load balancer if present
+        if has_ascs:
+            load_balancer_name = f"{region_code}-sp{subscription_number}-{environment_code}-{smn}-lb01"
+            
+            # Fill the row
+            lb_sheet.cell(row=current_row, column=1).value = load_balancer_name
+            lb_sheet.cell(row=current_row, column=2).value = "Standard"
+            lb_sheet.cell(row=current_row, column=3).value = "Internal"
+            lb_sheet.cell(row=current_row, column=4).value = resource_group_name
+            lb_sheet.cell(row=current_row, column=5).value = "Prod"
+            lb_sheet.cell(row=current_row, column=13).value = "ASCS"
+            
+            current_row += 1
+        
+        # Add DB load balancer if present
+        if has_db:
+            load_balancer_name = f"{region_code}-sp{subscription_number}-{environment_code}-{smn}-lb01"
+            
+            # Fill the row
+            lb_sheet.cell(row=current_row, column=1).value = load_balancer_name
+            lb_sheet.cell(row=current_row, column=2).value = "Standard"
+            lb_sheet.cell(row=current_row, column=3).value = "Internal"
+            lb_sheet.cell(row=current_row, column=4).value = resource_group_name
+            lb_sheet.cell(row=current_row, column=5).value = "Prod"
+            lb_sheet.cell(row=current_row, column=13).value = "DB"
+            
+            current_row += 1
+
 def add_other_sheets(json_file_path, template_path, workbook):
     
     # Check if files exist
@@ -367,19 +463,9 @@ def add_other_sheets(json_file_path, template_path, workbook):
     general_config = form_data.get("general_config", {})
     server_data = form_data.get("server_data", [])
     
-    # After processing the SAP sheet, check which database sheets are needed
-    server_roles = [server.get("Server Role", "") for server in server_data]
-    has_nfs = any("+" in role for role in server_roles)
-    has_hana = any("HANA" in role for role in server_roles)
-    has_db2 = any("DB2" in role for role in server_roles)
-    has_ascs_dr = any(role == "ASCS-DR" for role in server_roles) or any(role == "SCS-DR" for role in server_roles)
-    has_ascs  = any(role == "ASCS" for role in server_roles) or any(role == "SCS" for role in server_roles)
-
-    pas_roles = {"PAS", "AAS", "PAS-DR", "AAS-DR"}
-    only_pas_aas = any(role in pas_roles for role in server_roles)
-
-
-    # Get the SID from the form data
+    # Get environment type and basic config
+    environment = general_config.get("Environment", "").lower()
+    is_production = "production" in environment or "prod" in environment
     sid = general_config.get("SID", "").upper()
     sid_lower = sid.lower()
     sap_region = general_config.get("SAP Region", "Global")
@@ -388,233 +474,315 @@ def add_other_sheets(json_file_path, template_path, workbook):
     region = "AMS" if "Amsterdam" in general_config.get("Azure Region", "") else "Dublin"
     region_dr = "Dublin" if "Amsterdam" in general_config.get("Azure Region", "") else "AMS"
 
-    afs_servername = None
+    # Analyze server roles and their versions
+    server_roles = [server.get("Server Role", "") for server in server_data]
+    
+    # Create a mapping of server roles to their versions
+    role_versions = {}
     for server in server_data:
-        if server.get("Server Role", "") == "ASCS":
-            afs_servername = server.get("AFS Server Name", "")
-            break
+        role = server.get("Server Role", "")
+        version = server.get("Server Role Version", "")
+        if role and role not in role_versions:
+            role_versions[role] = version
     
-    afs_servername_dr = None
-    for server in server_data:
-        if server.get("Server Role", "") == "ASCS-DR":
-            afs_servername_dr = server.get("AFS Server Name", "")
-            break
-    
-    
-    # Collect service model names and identify NFS and DB servers
-    service_model_names = []
-    nfs_service_model = None
-    db_service_model = None
+    role_flags = {
+        'has_nfs': any("+" in role for role in server_roles),
+        'has_hana': any("HANA" in role for role in server_roles),
+        'has_db2': any("DB2" in role for role in server_roles),
+        'has_maxdb': any("MaxDB" in role for role in server_roles),
+        'has_ascs_dr': any(role in ["ASCS-DR", "SCS-DR"] for role in server_roles),
+        'has_ascs': any(role in ["ASCS", "SCS"] for role in server_roles),
+        'has_apo': any("APO" in role for role in server_roles),
+        'has_iq': any("IQ" in role for role in server_roles),
+        'has_optimizer': any("Optimizer" in role for role in server_roles),
+        'only_pas_aas': any(role in {"PAS", "AAS", "PAS-DR", "AAS-DR"} for role in server_roles)
+    }
 
+    # Get AFS server names
+    afs_servername = next((server.get("AFS Server Name", "") for server in server_data if server.get("Server Role") == "ASCS"), None)
+    afs_servername_dr = next((server.get("AFS Server Name", "") for server in server_data if server.get("Server Role") == "ASCS-DR"), None)
+    
+    # Collect service model names
+    service_model_names = []
     for server in server_data:
         role = server.get("Server Role", "")
         server_model_name = generate_service_model_names(
-            role, 
-            sid,
-            sap_region,
-            general_config.get("Azure Region Code", "eu")[:2]
+            role, sid, sap_region, general_config.get("Azure Region Code", "eu")[:2]
         )
-        
         if server_model_name:
             service_model_names.append(server_model_name)
-            
-            # Check for NFS role
-            if "NFS" in role:
-                nfs_service_model = server_model_name
-            
-            # Check for DB role (HANA DB or DB2 DB)
-            if "DB" in role:
-                db_service_model = server_model_name
 
-    # Rename the sheets to use the SID provided by the user
-    if has_nfs and "SID_FS ASCS+PAS+NFS" in workbook.sheetnames:
-        fs_sheet = workbook["SID_FS ASCS+PAS+NFS"]
-        fs_sheet.title = f"{sid}_FS ASCS+PAS+NFS"  # Rename the sheet
-        fs_sheet = workbook[f"{sid}_FS ASCS+PAS+NFS"]  # Get the renamed sheet
+    # =============================================================================
+    # HELPER FUNCTIONS
+    # =============================================================================
+    
+    def replace_sid_in_sheet(sheet, sid_value):
+        """Replace all 'SID' occurrences with actual SID value in a sheet"""
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
+                    cell.value = cell.value.replace("SID", sid_value)
+    
+    def get_possible_sheet_names(base_role, environment_suffix):
+        """Generate possible sheet names for a given role and environment"""
+        possible_names = []
         
-        # Process SID_FS sheet
+        # Get the version for this role
+        role_version = role_versions.get(base_role, "")
+        
+        if is_production and environment_suffix == "Prod":
+            if role_version:
+                # Primary: {Server Role}_{Server Role Version} Prod
+                possible_names.append(f"{base_role}_{role_version} {environment_suffix}")
+            
+            # Fallback: {Server Role} Prod (without version)
+            possible_names.append(f"{base_role} {environment_suffix}")
+            
+            # Additional fallback for variations like v1, v2 if no version found
+            if not role_version:
+                possible_names.extend([
+                    f"{base_role}_v1 {environment_suffix}",
+                    f"{base_role}_v2 {environment_suffix}"
+                ])
+        else:
+            # Non-production: just {Server Role} Non_Prod
+            possible_names.append(f"{base_role} {environment_suffix}")
+        
+        return possible_names
+    
+    def select_and_rename_sheet_with_version(base_role, target_name):
+        """Select the appropriate sheet based on role, version, and environment"""
+        selected_sheet = None
+        sheets_to_remove = []
+        
+        # Determine environment suffix
+        env_suffix = "Prod" if is_production else "Non_Prod"
+        
+        # Get all possible sheet names for this role
+        possible_names = get_possible_sheet_names(base_role, env_suffix)
+        
+        # Find all sheets that match this base role pattern
+        all_role_sheets = []
+        for sheet_name in workbook.sheetnames:
+            if base_role.lower() in sheet_name.lower() and ("prod" in sheet_name.lower() or "non_prod" in sheet_name.lower()):
+                all_role_sheets.append(sheet_name)
+        
+        # Try to find the best matching sheet
+        for sheet_name in possible_names:
+            # Check if sheet exists with case-insensitive comparison
+            matching_sheet = next((name for name in workbook.sheetnames if name.lower() == sheet_name.lower()), None)
+            if matching_sheet:
+                selected_sheet = workbook[matching_sheet]
+                break
+        
+        # Mark other sheets for removal
+        for sheet_name in all_role_sheets:
+            if selected_sheet is None or sheet_name != selected_sheet.title:
+                sheets_to_remove.append(sheet_name)
+        
+        # Rename the selected sheet
+        if selected_sheet:
+            selected_sheet.title = target_name
+        
+        # Remove unused sheets
+        for sheet_name in sheets_to_remove:
+            if sheet_name in workbook.sheetnames:
+                workbook.remove(workbook[sheet_name])
+        
+        return workbook[target_name] if target_name in workbook.sheetnames else None
+    
+    def select_and_rename_sheet(sheet_mapping, target_name):
+        """Select the appropriate sheet based on environment and rename it (for simple cases)"""
+        selected_sheet = None
+        sheets_to_remove = []
+        
+        for sheet_name, sheet_env in sheet_mapping.items():
+            # Check if sheet exists with case-insensitive comparison
+            matching_sheet = next((name for name in workbook.sheetnames if name.lower() == sheet_name.lower()), None)
+            if matching_sheet:
+                if (is_production and sheet_env == "prod") or (not is_production and sheet_env == "non_prod"):
+                    selected_sheet = workbook[matching_sheet]
+                    selected_sheet.title = target_name
+                else:
+                    sheets_to_remove.append(matching_sheet)
+        
+        # Remove unused sheets
+        for sheet_name in sheets_to_remove:
+            if sheet_name in workbook.sheetnames:
+                workbook.remove(workbook[sheet_name])
+        
+        return workbook[target_name] if target_name in workbook.sheetnames else None
+    
+    def remove_sheets_if_unused(sheet_names):
+        """Remove sheets if they exist in workbook"""
+        for sheet_name in sheet_names:
+            # Check if sheet exists with case-insensitive comparison
+            matching_sheet = next((name for name in workbook.sheetnames if name.lower() == sheet_name.lower()), None)
+            if matching_sheet:
+                workbook.remove(workbook[matching_sheet])
+
+    # =============================================================================
+    # CUSTOM LOGIC FUNCTIONS
+    # =============================================================================
+    
+    def apply_nfs_logic(sheet, sid, sid_lower, region_letter, service_model_names):
+        """Apply NFS-specific cell updates"""
+        # A2: Combined server names with '/' separator
         if service_model_names:
-            # A2: Combined server names with '/' separator
-            fs_sheet.cell(row=2, column=1).value = "/".join(service_model_names)
-        
-        # B5: <SID>saplocal
-        fs_sheet.cell(row=5, column=2).value = f"{sid}saplocal"
-        
-        # B10 and C10: <SID>NFS
-        fs_sheet.cell(row=10, column=2).value = f"{sid}NFS"
-        fs_sheet.cell(row=10, column=3).value = f"{sid}NFS"
-        
-        # C6: <SID>sap
-        fs_sheet.cell(row=6, column=3).value = f"{sid}sap"
-        
-        # C8: <SID>ascs
-        fs_sheet.cell(row=8, column=3).value = f"{sid}ascs"
-        
-        # D6: /usr/sap/<SID>
-        fs_sheet.cell(row=6, column=4).value = f"/usr/sap/{sid}"
-        
-        # D8: /usr/sap/<SID>/ASCS01
-        fs_sheet.cell(row=8, column=4).value = f"/usr/sap/{sid}/ASCS01"
+            sheet.cell(row=2, column=1).value = f"{region_letter}{sid_lower}002a/{region_letter}{sid_lower}051a"
         
         # D10: /srv/nfs/{region_letter}{sid_lower}
-        fs_sheet.cell(row=10, column=4).value = f"/srv/nfs/{region_letter}{sid_lower}"
-        fs_sheet.cell(row=10, column=5).value = f"/srv/nfs/{region_letter}{sid_lower}002"
+        sheet.cell(row=10, column=4).value = f"/srv/nfs/{region_letter}{sid_lower}"
+        sheet.cell(row=10, column=5).value = f"/srv/nfs/{region_letter}{sid_lower}002"
         
-        # Process the NFS directory structure (rows 15-19)
-        # Row 15: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/interface 
-        fs_sheet.cell(row=15, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/interface"
-        fs_sheet.cell(row=15, column=4).value = f"/interface/sap{sid.lower()}"
+        # Process NFS directory structure (rows 15-18)
+        nfs_mappings = [
+            (15, f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/interface", f"/interface/sap{sid_lower}"),
+            (16, f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt", f"/sapmnt/{sid}"),
+            (17, f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/{region_letter}{sid_lower}002", f"/app/{region_letter}{sid_lower}002"),
+            (18, f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans", f"/usr/sap/trans")
+        ]
         
-        # Row 16: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt
-        fs_sheet.cell(row=16, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
-        fs_sheet.cell(row=16, column=4).value = f"/sapmnt/{sid}"
-        
-        # Row 17: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/{region_letter}{sid_lower}002
-        fs_sheet.cell(row=17, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/{region_letter}{sid_lower}002"
-        fs_sheet.cell(row=17, column=4).value = f"/app/{region_letter}{sid_lower}002"
-        
-        # Row 18: <NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans
-        fs_sheet.cell(row=18, column=1).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/trans"
-        fs_sheet.cell(row=18, column=4).value = f"/usr/sap/trans"
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in fs_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
+        for row_num, col1_value, col4_value in nfs_mappings:
+            sheet.cell(row=row_num, column=1).value = col1_value
+            if col4_value:
+                sheet.cell(row=row_num, column=4).value = col4_value
 
-    if not has_nfs and "SID_FS ASCS+PAS+NFS" in workbook.sheetnames:
-        workbook.remove(workbook["SID_FS ASCS+PAS+NFS"])
-    
-    # Conditionally process HANA sheet
-    if has_hana and "SID_FS layout HANA" in workbook.sheetnames:
-        hana_sheet = workbook["SID_FS layout HANA"]
-        hana_sheet.title = f"{sid}_FS layout HANA"  # Rename the sheet 
-        hana_sheet = workbook[f"{sid}_FS layout HANA"]  # Get the renamed sheet
-        
-        # Title in cell A1: "<SID> Hana Standalone on Azure"
-        hana_sheet.cell(row=1, column=1).value = f"{sid} Hana Standalone on Azure"
-        
-        # Update cells in rows 2-3
-        hana_sheet.cell(row=2, column=1).value = f"{sid} - System DB"
-        hana_sheet.cell(row=3, column=1).value = f"{sid} - Tenant DB"
-        
-        # Update volume group and logical volume names (rows 7-13)
-        # Row 9: P1Xsaplocal -> <SID>saplocal
-        hana_sheet.cell(row=8, column=3).value = f"{sid}saplocal"
-        hana_sheet.cell(row=9, column=4).value = f"{sid}sap"
-        hana_sheet.cell(row=9, column=5).value = f"/usr/sap/{sid}"
-        
-        # Row 10: Update DAAsap for the tenant DB
-        hana_sheet.cell(row=10, column=4).value = f"DAAsap"
-        hana_sheet.cell(row=10, column=5).value = f"/usr/sap/DAA"
-        
-        # Row 11: P1Xhanashared -> <SID>hanashared
-        hana_sheet.cell(row=11, column=3).value = f"{sid}hanashared"
-        hana_sheet.cell(row=11, column=4).value = f"{sid}shared"
-        hana_sheet.cell(row=11, column=5).value = f"/hana/shared/"
-        
-        # Row 12: P1Xhanalog -> <SID>hanalog
-        hana_sheet.cell(row=12, column=3).value = f"{sid}hanalog"
-        hana_sheet.cell(row=12, column=4).value = f"{sid}log"
-        hana_sheet.cell(row=12, column=5).value = f"/hana/log/"
-        
-        # Row 13: P1Xhanadata -> <SID>hanadata
-        hana_sheet.cell(row=13, column=3).value = f"{sid}hanadata"
-        hana_sheet.cell(row=13, column=4).value = f"{sid}data"
-        hana_sheet.cell(row=13, column=5).value = f"/hana/data/"
-        
-        # Update NFS Mounts (row 17)
-        hana_sheet.cell(row=17, column=5).value = f"<NFS Server>/srv/nfs/{region_letter}{sid_lower}/sapmnt"
-        hana_sheet.cell(row=17, column=6).value = f"/sapmnt/{sid}"
-        
-        # Set DB server name in row 2 column A (if we have a DB service model)
-        if db_service_model:
-            # Use DB service model - update cell C2
-            hana_sheet.cell(row=4, column=1).value = f"Node 1"
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in hana_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
-    
-    # Remove unused database sheets
-    if not has_hana and "SID_FS layout HANA" in workbook.sheetnames:
-        workbook.remove(workbook["SID_FS layout HANA"])
-    
-    # Conditionally process DB2 sheet
-    if has_db2 and "SID_FS Layout DB2" in workbook.sheetnames:
-        db2_sheet = workbook["SID_FS Layout DB2"]
-        db2_sheet.title = f"{sid}_FS Layout DB2"  # Rename the sheet
-        db2_sheet = workbook[f"{sid}_FS Layout DB2"]  # Get the renamed sheet
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in db2_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
-        
+    def apply_db2_logic(sheet, sid, sid_lower, region_letter):
+        """Apply DB2-specific cell updates"""
         # Update NFS Mounts
-        db2_sheet.cell(row=51, column=4).value = f"{region_letter}{sid_lower}000a:/srv/nfs/{region_letter}{sid_lower}/sapmnt"
+        sheet.cell(row=51, column=4).value = f"{region_letter}{sid_lower}000a:/srv/nfs/{region_letter}{sid_lower}/sapmnt"
+
+    def apply_ascs_logic(sheet, sid, region, region_dr, afs_servername, afs_servername_dr, has_dr, is_production):
+        """Apply ASCS-specific cell updates"""
+        if has_dr:
+            if is_production:
+                # Production DR scenario
+                sheet.cell(row=25, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=27, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=35, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+                sheet.cell(row=37, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+            else:
+                # Non-production DR scenario
+                sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=15, column=1).value = f"Primary - {region} ({afs_servername})"
+        else:
+            # Non-DR scenario
+            if not is_production:
+                sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=15, column=1).value = f"Primary - {region} ({afs_servername})"
+
+    # =============================================================================
+    # SHEET CONFIGURATION AND PROCESSING
+    # =============================================================================
+    
+    # Define sheet mappings and their specific processing logic
+    sheet_configs = {
+        'nfs': {
+            'condition': role_flags['has_nfs'],
+            'sheet_mapping': {"ASCS+PAS+NFS": "single"},
+            'target_name': "FS Layout ASCS+PAS+NFS",
+            'custom_logic': lambda sheet: apply_nfs_logic(sheet, sid, sid_lower, region_letter, service_model_names),
+            'use_version_logic': False
+        },
+        'hana': {
+            'condition': role_flags['has_hana'],
+            'base_role': "HANA",
+            'target_name': "FS Layout HANA",
+            'custom_logic': None,
+            'use_version_logic': True
+        },
+        'db2': {
+            'condition': role_flags['has_db2'],
+            'base_role': "DB2 DB",
+            'target_name': "FS Layout DB2",
+            'custom_logic': lambda sheet: apply_db2_logic(sheet, sid, sid_lower, region_letter) if not is_production else None,
+            'use_version_logic': True
+        },
+        'maxdb': {
+            'condition': role_flags['has_maxdb'],
+            'base_role': "MaxDB",
+            'target_name': "FS Layout MaxDB",
+            'custom_logic': None,
+            'use_version_logic': True
+        },
+        'ascs': {
+            'condition': role_flags['has_ascs'] or role_flags['has_ascs_dr'],
+            'sheet_mapping': {"ASCS Non_Prod": "non_prod", "ASCS Prod": "prod"},
+            'target_name': "FS Layout ASCS",
+            'custom_logic': lambda sheet: apply_ascs_logic(sheet, sid, region, region_dr, afs_servername, afs_servername_dr, role_flags['has_ascs_dr'], is_production),
+            'use_version_logic': False
+        },
+        'pas': {
+            'condition': role_flags['only_pas_aas'],
+            'sheet_mapping': {"PAS Non_Prod": "non_prod", "PAS Prod": "prod"},
+            'target_name': "FS Layout PAS_AAS",
+            'custom_logic': None,
+            'use_version_logic': False
+        },
+        'apo': {
+            'condition': role_flags['has_apo'],
+            'base_role': "APO",
+            'target_name': "FS Layout APO",
+            'custom_logic': None,
+            'use_version_logic': True
+        },
+        'iq': {
+            'condition': role_flags['has_iq'],
+            'base_role': "IQ",
+            'target_name': "FS Layout IQ",
+            'custom_logic': None,
+            'use_version_logic': True
+        },
+        'optimizer': {
+            'condition': role_flags['has_optimizer'],
+            'base_role': "Optimizer",
+            'target_name': "FS Layout Optimizer",
+            'custom_logic': None,
+            'use_version_logic': True
+        }
+    }
+
+    # Process each sheet configuration
+    for sheet_type, config in sheet_configs.items():
+        if config['condition']:
+            sheet = None
             
-    if not has_db2 and "SID_FS Layout DB2" in workbook.sheetnames:
-        workbook.remove(workbook["SID_FS Layout DB2"])
-    
-    # Conditionally process ASCS sheet
-    if has_ascs_dr and "SID_FS ASCS Prod" in workbook.sheetnames:
-        ascs_sheet = workbook["SID_FS ASCS Prod"]
-        ascs_sheet.title = f"{sid}_FS ASCS"  # Rename the sheet
-        ascs_sheet = workbook[f"{sid}_FS ASCS"]  # Get the renamed sheet
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in ascs_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
-        
-        # Update AFS Details
-        ascs_sheet.cell(row=25, column=1).value = f"Primary - {region} ({afs_servername})"
-        ascs_sheet.cell(row=27, column=1).value = f"Primary - {region} ({afs_servername})"
+            # Use version-aware logic for roles that support versions
+            if config.get('use_version_logic', False):
+                sheet = select_and_rename_sheet_with_version(config['base_role'], config['target_name'])
+            # Handle single sheets (no environment variants)
+            elif 'sheet_mapping' in config and any(env == "single" for env in config['sheet_mapping'].values()):
+                sheet_name = next(name for name, env in config['sheet_mapping'].items() if env == "single")
+                # Check if sheet exists with case-insensitive comparison
+                matching_sheet = next((name for name in workbook.sheetnames if name.lower() == sheet_name.lower()), None)
+                if matching_sheet:
+                    sheet = workbook[matching_sheet]
+                    sheet.title = config['target_name']
+                    sheet = workbook[config['target_name']]
+            # Handle environment-based sheets (traditional logic)
+            elif 'sheet_mapping' in config:
+                sheet = select_and_rename_sheet(config['sheet_mapping'], config['target_name'])
+            
+            if sheet:
+                # Apply custom logic if available
+                if config['custom_logic']:
+                    config['custom_logic'](sheet)
+                
+                # Always apply SID replacement
+                replace_sid_in_sheet(sheet, sid)
+        else:
+            # Remove unused sheets
+            if config.get('use_version_logic', False):
+                # For version-aware sheets, remove all variations
+                base_role = config['base_role']
+                sheets_to_remove = []
+                for sheet_name in workbook.sheetnames:
+                    if base_role.lower() in sheet_name.lower() and ("prod" in sheet_name.lower() or "non_prod" in sheet_name.lower()):
+                        sheets_to_remove.append(sheet_name)
+                remove_sheets_if_unused(sheets_to_remove)
+            elif 'sheet_mapping' in config:
+                remove_sheets_if_unused(list(config['sheet_mapping'].keys()))
 
-        ascs_sheet.cell(row=35, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
-        ascs_sheet.cell(row=37, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
-
-        workbook.remove(workbook["SID_FS ASCS Non_Prod"])
-    
-    elif has_ascs and "SID_FS ASCS Non_Prod" in workbook.sheetnames:
-        ascs_sheet = workbook["SID_FS ASCS Non_Prod"]
-        ascs_sheet.title = f"{sid}_FS ASCS"  # Rename the sheet
-        ascs_sheet = workbook[f"{sid}_FS ASCS"]  # Get the renamed sheet
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in ascs_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
-        
-        # Update AFS Details
-        ascs_sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
-        ascs_sheet.cell(row=15, column=1).value = f"Primary - {region} ({afs_servername})"
-        
-        workbook.remove(workbook["SID_FS ASCS Prod"])
-    
-    if not has_ascs and not has_ascs_dr:
-        workbook.remove(workbook["SID_FS ASCS Prod"])
-        workbook.remove(workbook["SID_FS ASCS Non_Prod"])
-
-    # Conditionally process PAS/AAS sheet
-    if only_pas_aas and "SID_FS PAS" in workbook.sheetnames:
-        pas_sheet = workbook["SID_FS PAS"]
-        pas_sheet.title = f"{sid}_FS PAS_AAS"  # Rename the sheet
-        pas_sheet = workbook[f"{sid}_FS PAS_AAS"]  # Get the renamed sheet
-        
-        # Find and replace all "SID" with the actual SID value
-        for row in pas_sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str) and "SID" in cell.value:
-                    cell.value = cell.value.replace("SID", sid)
-    
-    if not only_pas_aas and "SID_FS PAS" in workbook.sheetnames:
-        workbook.remove(workbook["SID_FS PAS"])
-    
+    print(f"Sheet processing completed for environment: {'Production' if is_production else 'Non-Production'}")
+    return workbook

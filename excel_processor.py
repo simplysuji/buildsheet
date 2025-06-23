@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import os
 import openpyxl
-from utils import generate_service_model_names, get_environment_code, get_instance_number, get_sap_region_letter, add_other_sheets
+from utils import generate_service_model_names, get_environment_code, get_instance_number, get_sap_region_letter, add_other_sheets, add_load_balancer_sheet
 
 def process_non_prod_data_to_excel(json_file_path, template_path, output_path=None):
     """
@@ -207,7 +207,12 @@ def process_non_prod_data_to_excel(json_file_path, template_path, output_path=No
         
         # Column 50: TimeZone (default to "CET")=====
         sheet.cell(row=row, column=50).value = general_config.get("Timezone", "CET")
-        
+    
+    
+    # Remove Load Balancer Sheet if it exists
+    if "Azure Load Balancer" in workbook.sheetnames:
+        del workbook["Azure Load Balancer"]
+
     # Process the sheets after handling the SAP sheet
     add_other_sheets(json_file_path, template_path, workbook)
     
@@ -347,7 +352,10 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS"]):
         sap_region = general_config.get("SAP Region", "Sirius")
         region_letter = get_sap_region_letter(sap_region)
-        az_zone = server.get("AZ Selection", "")
+        if "-HA" in server_role:
+            az_zone = server.get("HA_Zone","")
+        else:
+            az_zone = server.get("AZ Selection", "")
 
         # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-ppg
         ppg = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-ppg"
@@ -359,8 +367,11 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     if server.get("Availability Set", "").lower() == "yes":
         sap_region = general_config.get("SAP Region", "Sirius")
         region_letter = get_sap_region_letter(sap_region)
-        az_zone = server.get("AZ Selection", "")
-        
+        if "-HA" in server_role:
+            az_zone = server.get("HA_Zone","")
+        else:
+            az_zone = server.get("AZ Selection", "")
+            
         # Format: <azure_region_code>-sp01-<SAPregion>-<ITSG>-<SID>-az<x>-as
         availability_set = f"{region_code}-sp{subscription_number}-{region_letter}-{itsg_id}-{sid}-az{az_zone}-as"
         sheet.cell(row=row, column=22).value = availability_set
@@ -479,6 +490,9 @@ def process_prod_data_to_excel(json_file_path, template_path, output_path=None):
     for server in dr_servers:
         current_row = fill_server_data(sheet, server, general_config, current_row, aas_counters)
     
+    # Add Load Balancer Sheet
+    add_load_balancer_sheet(workbook, general_config, primary_servers)
+    
     # Process the sheets after handling the SAP sheet
     add_other_sheets(json_file_path, template_path, workbook)
     
@@ -504,7 +518,7 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_nonprod_ABC.json"
+    json_file = "sap_form_data_nonprod_NPR.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     

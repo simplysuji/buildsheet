@@ -86,6 +86,20 @@ def load_vm_sku_data():
         st.error(f"Error loading VM SKU data: {str(e)}")
         return {}
 
+def get_server_role_versions(server_role, form_options):
+    """
+    Get available versions for a specific server role
+    
+    Args:
+        server_role (str): The selected server role
+        form_options (dict): Form options containing version mappings
+        
+    Returns:
+        list: List of available versions for the server role
+    """
+    versions_map = form_options.get('SERVER_ROLES_VERSIONS_MAP', {})
+    return versions_map.get(server_role, [])
+
 def load_form_field_options():
     """
     Load form field options from the Excel file
@@ -107,6 +121,27 @@ def load_form_field_options():
             # Remove any empty strings
             options = [str(option).strip() for option in options if str(option).strip()]
             form_options[column] = options
+        
+        # Create server role versions mapping by reading both columns together
+        server_roles_versions = {}
+        if 'SERVER_ROLES' in df.columns and 'SERVER_ROLES_VERSIONS' in df.columns:
+            # Iterate through the DataFrame rows to map roles to versions
+            for _, row in df.iterrows():
+                role = row.get('SERVER_ROLES')
+                versions = row.get('SERVER_ROLES_VERSIONS')
+                
+                # Only process if role exists and is not null
+                if pd.notna(role) and str(role).strip():
+                    role = str(role).strip()
+                    
+                    # Check if versions exist and are not null/empty
+                    if pd.notna(versions) and str(versions).strip():
+                        # Split comma-separated values and clean them
+                        version_list = [v.strip() for v in str(versions).split(',') if v.strip()]
+                        if version_list:
+                            server_roles_versions[role] = version_list
+        
+        form_options['SERVER_ROLES_VERSIONS_MAP'] = server_roles_versions
         
         return form_options
     except Exception as e:
@@ -182,65 +217,81 @@ def contains_pas(server_role):
 
 # Function to check if server role contains ASCS
 def contains_ascs(server_role):
-    return "ASCS" == server_role.upper()
+    return "ASCS" == server_role.upper() or "ASCS-DR" == server_role.upper()
 
-def get_dr_az_zone(azure_region, azure_subscription):
+def requires_cluster(server_role):
     """
-    Get the DR AZ zone based on the primary server's region and subscription
+    Check if the server role requires cluster configuration
     
     Args:
-        azure_region (str): The selected Azure region
-        azure_subscription (str): The selected Azure subscription
+        server_role (str): The server role
         
     Returns:
-        str: The corresponding DR AZ zone
+        bool: True if cluster option is applicable for this role
     """
-    # Determine if it's Amsterdam or Dublin
-    is_amsterdam = "Amsterdam" in azure_region or "NLWE" in azure_region
-    is_dublin = "Dublin" in azure_region or "IENO" in azure_region
+    cluster_roles = ["ASCS", "HANA DB", "DB2 DB", "Maxdb"]
+    return any(role in server_role for role in cluster_roles)
+
+
+def load_az_zone_data():
+    """
+    Load AZ zone data from the Excel file
     
-    # Extract subscription type from the full subscription name
-    if "01" in azure_subscription or "Global" in azure_subscription:
-        subscription_type = "Global"
-    elif "02" in azure_subscription or "Sirius" in azure_subscription:
-        subscription_type = "Sirius"
-    elif "03" in azure_subscription or "U2K2" in azure_subscription:
-        subscription_type = "U2K2"
-    elif "04" in azure_subscription or "Cordillera" in azure_subscription:
-        subscription_type = "Cordillera"
-    elif "05" in azure_subscription or "Fusion" in azure_subscription:
-        subscription_type = "Fusion"
-    elif "98" in azure_subscription or "Model Environment" in azure_subscription:
-        subscription_type = "ME"
+    Returns:
+        dict: Dictionary mapping (subscription, region) to (primary_zone, ha_zone)
+    """
+    try:
+        # Read the AZ Zone sheet from the Excel file
+        df = pd.read_excel("SAP Buildsheet Automation Feeder.xlsx", sheet_name="AZ Zone")
+        
+        # Create a dictionary mapping (subscription, region) to zones
+        az_mapping = {}
+        for _, row in df.iterrows():
+            subscription = row['Subscription']
+            region = row['Region']
+            primary_zone = str(row['Primary Zone'])
+            ha_zone = str(row['HA Zone'])
+            
+            if pd.notna(subscription) and pd.notna(region):
+                # Create key using subscription and region
+                key = (subscription, region)
+                az_mapping[key] = {
+                    'primary_zone': primary_zone,
+                    'ha_zone': ha_zone
+                }
+        
+        return az_mapping
+    except Exception as e:
+        st.error(f"Error loading AZ zone data: {str(e)}")
+        return {}
+
+def get_az_zones(azure_subscription, azure_region, az_mapping):
+    """
+    Get primary and HA AZ zones based on subscription and region
+    
+    Args:
+        azure_subscription (str): The selected Azure subscription
+        azure_region (str): The selected Azure region
+        az_mapping (dict): AZ zone mapping data
+        
+    Returns:
+        tuple: (primary_zone, ha_zone)
+    """
+    # Extract region name from azure_region (Amsterdam or Dublin)
+    if "Amsterdam" in azure_region or "NLWE" in azure_region:
+        region = "Amsterdam"
+    elif "Dublin" in azure_region or "IENO" in azure_region:
+        region = "Dublin"
     else:
-        subscription_type = "Global"  # Default fallback
+        region = "Amsterdam"  # Default fallback
     
-    # AZ mapping based on the table provided
-    az_mapping = {
-        ("Global", "Amsterdam"): "3",
-        ("Global", "Dublin"): "2",
-        ("Sirius", "Amsterdam"): "3",
-        ("Sirius", "Dublin"): "2",
-        ("U2K2", "Amsterdam"): "1",
-        ("U2K2", "Dublin"): "2",
-        ("Cordillera", "Amsterdam"): "3",
-        ("Cordillera", "Dublin"): "1",
-        ("Fusion", "Amsterdam"): "3",
-        ("Fusion", "Dublin"): "2",
-        ("ME", "Amsterdam"): "1",
-        ("ME", "Dublin"): "2"
-    }
-    
-    # Determine location key
-    if is_amsterdam:
-        location = "Amsterdam"
-    elif is_dublin:
-        location = "Dublin"
+    # Look up the zones
+    key = (azure_subscription, region)
+    if key in az_mapping:
+        return az_mapping[key]['primary_zone'], az_mapping[key]['ha_zone']
     else:
-        location = "Amsterdam"  # Default fallback
-    
-    # Get the AZ zone
-    return az_mapping.get((subscription_type, location), "1")  # Default to "1" if not found
+        # Default fallback if not found
+        return "1", "2"
 
 def render_file_management_tab():
     """
@@ -301,7 +352,7 @@ def render_file_management_tab():
                     ):
                         st.session_state.feeder_downloaded = True
                         st.success("✅ File downloaded! You can now upload an updated version.")
-                        st.rerun()
+                        # st.rerun()
             else:
                 st.error("❌ Current file not found!")
                 st.session_state.feeder_downloaded = True  # Allow upload if no current file exists
@@ -325,7 +376,7 @@ def render_file_management_tab():
                         test_df = pd.read_excel(uploaded_feeder, sheet_name=None)
                         
                         # Check for required sheets
-                        required_sheets = ["DNS -Azure", "Instance Number", "Form Fields", "SKU Name"]
+                        required_sheets = ["DNS -Azure", "Instance Number", "Form Fields", "SKU Name", "AZ Zone"]
                         missing_sheets = [sheet for sheet in required_sheets if sheet not in test_df.keys()]
                         
                         if missing_sheets:
@@ -500,33 +551,21 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         dict: DR server configuration data
     """
     RECORD_TYPES = ["A Record", "CNAME"]
-    OS_VERSIONS = [
-        "RHEL 7.9 for SAP", "RHEL 8.10 SAP", "SLES 12 SP3", "SLES 12 SP4", 
-        "SLES 12 SP5", "SLES 15 SP1", "SLES 15 SP2", "Windows 2016", "Windows 2019", "Windows 2022", "Windows 2025"
-    ]
     INSTANCE_TYPES = list(vm_sku_mapping.keys()) if vm_sku_mapping else [
         "D8asv4", "E8asv4", "E16_v3", "E16as_v4", "E16ds_v4", "E16s_v3", "E2_v3", 
         "E20as_v4", "E20ds_v4", "E20s_v3", "E2as_v4", "E2ds_v4", "E2s_v3", "E32_v3",
         "E32as_v4", "E32ds_v4", "E32s_v3", "E4_v3", "E48as_v4", "E48ds_v4", "E48s_v3",
         "E4as_v4", "E4ds_v4", "E4s_v3"
     ]
-    PARK_SCHEDULES = ["Weekdays-12 hours Snooze(5pm IST to 5am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(6pm IST to 6am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(7pm IST to 7am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(8pm IST to 8am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(9pm IST to 9am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
-        "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
-    ]
+    
+    # Load form options and get values from Excel
+    form_options = load_form_field_options()
+    dr_server_roles = [role for role in form_options['SERVER_ROLES'] if '-DR' in role]
+    OS_VERSIONS = form_options['OS_VERSIONS']
+    PARK_SCHEDULES = form_options['PARK_SCHEDULES']
     
     # Get the primary server role to create DR equivalent
-    primary_server_role = st.session_state.get(f"server_role_{tab_key}_{server_index}", "")
-    
-    # Suggest DR server role based on primary server role
-    dr_server_roles = [
-        "AAS-DR", "ASCS-DR", "HANA DB-DR", "PAS-DR", "SCS-DR", 
-        "Web Dispatcher-DR", "iSCSI SBD-DR", "DB2 DB-DR"
-    ]
+    primary_server_role = st.session_state.get(f"server_role_{tab_key}_{server_index}", "") 
 
     # Try to auto-suggest DR role
     suggested_dr_role = ""
@@ -536,6 +575,10 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         suggested_dr_role = "ASCS-DR"
     elif "HANA DB" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "HANA DB-DR"
+    elif "Maxdb" in primary_server_role and "DR" not in primary_server_role:
+        suggested_dr_role = "Maxdb-DR"
+    elif "Web Dispatcher" in primary_server_role and "DR" not in primary_server_role:
+        suggested_dr_role = "Web Dispatcher-DR"
     elif "DB2 DB" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "DB2 DB-DR"
     elif "PAS" in primary_server_role and "DR" not in primary_server_role:
@@ -545,7 +588,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
     elif "Web Dispatcher" in primary_server_role and "DR" not in primary_server_role:
         suggested_dr_role = "Web Dispatcher-DR"
     elif "iSCSI SBD" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "iSCSI SBD-DR"  
+        suggested_dr_role = "iSCSI SBD-DR" 
     
     # Set default index for DR role
     default_dr_index = 0
@@ -595,26 +638,16 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                     disabled=True,
                     key=f"dr_availability_set_display_{tab_key}_{server_index}"
                 )
+        
         with col3:
-            # Auto-determine DR AZ Selection based on primary server's region and subscription
-            primary_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
-            primary_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
-            suggested_dr_az = get_dr_az_zone(primary_azure_region, primary_azure_subscription)
-            
-            # Available AZ zones
+            # Simple DR AZ zone selection with default options
             dr_az_zones = ["1", "2", "3"]
-            
-            # Set default index for suggested AZ
-            default_az_index = 0
-            if suggested_dr_az in dr_az_zones:
-                default_az_index = dr_az_zones.index(suggested_dr_az)
             
             dr_az_selection = st.selectbox(
                 "AZ Selection - Zone", 
                 dr_az_zones,
-                index=default_az_index,
                 key=f"dr_az_selection_{tab_key}_{server_index}",
-                help=f"Suggested: {suggested_dr_az} (based on primary server region and subscription)"
+                help="Select the availability zone for the DR server"
             )
         
         # Show AFS Servername option if server role contains PAS
@@ -739,6 +772,7 @@ def render_form_content(tab_key, is_production=False):
 
     # Load form field options from Excel
     form_options = load_form_field_options()
+    az_zone_mapping = load_az_zone_data()
     
     # Define options based on Production vs Non-Production
     if is_production:
@@ -756,8 +790,7 @@ def render_form_content(tab_key, is_production=False):
     SAP_REGIONS = form_options['SAP_REGIONS']
     SERVICE_CRITICALITY = form_options['SERVICE_CRITICALITY']
     AZURE_REGIONS = form_options['AZURE_REGIONS']
-    AZ_ZONES = ["1", "2", "3"] 
-    SERVER_ROLES = form_options['SERVER_ROLES']
+    SERVER_ROLES = [role for role in form_options['SERVER_ROLES'] if '-DR' not in role and '-HA' not in role]
     OS_VERSIONS = form_options['OS_VERSIONS']
     RECORD_TYPES = ["A Record", "CNAME"]
     PARK_SCHEDULES = form_options['PARK_SCHEDULES']
@@ -825,16 +858,21 @@ def render_form_content(tab_key, is_production=False):
     if not is_production:
         col1, col2 = st.columns(2)
         with col1:
-            az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}")
+            # Get suggested AZ zones based on subscription and region
+            current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
+            current_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
+            suggested_primary, suggested_ha = get_az_zones(current_azure_subscription, current_azure_region, az_zone_mapping)
+            
+            # Display AZ zone as read-only (grayed out)
+            az_selection = st.text_input(
+                "AZ Selection - Zone", 
+                value=suggested_primary,
+                disabled=True,
+                key=f"az_selection_{tab_key}",
+                help=f"Auto-assigned based on subscription and region selection"
+            )
         with col2:
             record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}")
-    # else:
-    #     # Production only has Azure Subscription (no fourth row layout)
-    #     col1, col2 = st.columns(2)
-    #     with col1:
-    #         azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
-    #     with col2:
-    #         st.empty()
     
 
     # SERVER CONFIGURATION SECTION
@@ -848,18 +886,47 @@ def render_form_content(tab_key, is_production=False):
         with st.expander(f"🖥️ Primary Server {i+1}", expanded=True):
                        
             # Basic server info
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 server_role = st.selectbox("Server Role", SERVER_ROLES, key=f"server_role_{tab_key}_{i}")
+
+            # Get available versions for the selected server role
+            available_versions = get_server_role_versions(server_role, form_options)
+
             with col2:
-                # service_criticality = st.selectbox("Service Criticality", SERVICE_CRITICALITY, key=f"service_criticality_{tab_key}_{i}")
-            
+                if available_versions:
+                    # Show version dropdown if versions are available
+                    server_role_version = st.selectbox(
+                        "Server Role Version", 
+                        available_versions, 
+                        key=f"server_role_version_{tab_key}_{i}",
+                        help=f"Available versions for {server_role}"
+                    )
+                else:
+                    # Show disabled field if no versions available
+                    st.text_input(
+                        "Server Role Version", 
+                        value="N/A",
+                        disabled=True,
+                        key=f"server_role_version_display_{tab_key}_{i}",
+                        help="No versions available for this server role"
+                    )
+                    server_role_version = "N/A"
+
+            with col3:            
                 # Show Availability Set option if server role contains PAS
                 availability_set = "No"  # Default value
                 if contains_pas(server_role):
                     availability_set = st.selectbox("Availability Set", ["Yes", "No"], 
                                                 key=f"availability_set_{tab_key}_{i}",
                                                 help="Required for PAS servers for high availability")
+                else:
+                    st.text_input(
+                        "Availability Set", 
+                        value="N/A", 
+                        disabled=True,
+                        key=f"availability_set_display_{tab_key}_{i}"
+                    )
                 
             # Show AFS Servername option if server role contains PAS
             afs_needed = "NA"  # Default value
@@ -874,18 +941,50 @@ def render_form_content(tab_key, is_production=False):
                 with col1:
                     record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}_{i}")
                 with col2:
-                    az_selection = st.selectbox("AZ Selection - Zone", AZ_ZONES, key=f"az_selection_{tab_key}_{i}")
+                    # Get suggested AZ zones based on subscription and region
+                    current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
+                    current_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
+                    suggested_primary, suggested_ha = get_az_zones(current_azure_subscription, current_azure_region, az_zone_mapping)
+                    
+                    # Set default index for suggested primary zone
+                    az_zones = ["1", "2", "3"]
+                    default_primary_index = 0
+                    if suggested_primary in az_zones:
+                        default_primary_index = az_zones.index(suggested_primary)
+                    
+                    az_selection = st.selectbox(
+                        "AZ Selection - Zone", 
+                        az_zones,
+                        index=default_primary_index,
+                        disabled=True,
+                        key=f"az_selection_{tab_key}_{i}",
+                        help=f"Suggested Primary Zone: {suggested_primary} (based on subscription and region)"
+                    )
                 with col3:
-                    cluster = st.selectbox("Cluster", 
-                                         ["Yes", "No"],
-                                         key=f"cluster_{tab_key}_{i}",
-                                         help="Required for Production environments")
+                    # Show cluster option only for specific server roles
+                    if requires_cluster(server_role):
+                        cluster = st.selectbox("Cluster", 
+                                             ["Yes", "No"],
+                                             key=f"cluster_{tab_key}_{i}",
+                                             help="Required for Production environments with ASCS, HANA DB, DB2 DB, or Maxdb roles")
+                    else:
+                        # Show disabled field for other roles
+                        cluster = st.text_input(
+                            "Cluster", 
+                            value="N/A",
+                            disabled=True,
+                            key=f"cluster_display_{tab_key}_{i}",
+                            help="Cluster option not applicable for this server role"
+                        )
+                        # Set cluster value for data collection
+                        cluster = "N/A"
             
             col1, col2, col3 = st.columns(3)
             with col1:
                 os_version = st.selectbox("OS Version", OS_VERSIONS, key=f"os_version_{tab_key}_{i}")
             with col2:
                 instance_type = st.selectbox("Azure Instance Type", INSTANCE_TYPES, key=f"instance_type_{tab_key}_{i}")
+            
             with col3:
                 # Auto-populate Memory/CPU based on selected instance type
                 memory_cpu = get_vm_size(instance_type, vm_sku_mapping)
@@ -954,6 +1053,7 @@ def render_form_content(tab_key, is_production=False):
             server_config = {
                 "Server Number": i+1,
                 "Server Role": server_role,
+                "Server Role Version": server_role_version,
                 "Availability Set": availability_set if contains_pas(server_role) else "N/A",
                 "AFS Server Name": afs_needed if contains_ascs(server_role) else "N/A",
                 "OS Version": os_version,
@@ -972,15 +1072,30 @@ def render_form_content(tab_key, is_production=False):
             if is_production:
                 server_config["Record Type"] = record_type
                 server_config["AZ Selection"] = az_selection
-                server_config["Cluster"] = cluster
-                
-                # Add HA_Role field when Cluster is Yes and HA variant exists
-                if cluster == "Yes":
-                    ha_role = f"{server_role}-HA"
-                    if ha_role in SERVER_ROLES:
-                        server_config["HA_Role"] = ha_role
+                # Handle cluster value based on server role
+                if requires_cluster(server_role):
+                    server_config["Cluster"] = cluster
+                    
+                    # Add HA_Role field when Cluster is Yes and HA variant exists
+                    if cluster == "Yes" and "DB2" in server_role:
+                        server_config["HA_Role"] = "DB2 DB-HA"
+                        server_config["HA_Zone"] = suggested_ha
+
+                    elif cluster == "Yes":
+                        ha_role = f"{server_role}-HA"
+                        if ha_role in form_options['SERVER_ROLES']:
+                            server_config["HA_Role"] = ha_role
+                            server_config["HA_Zone"] = suggested_ha
+                        else:
+                            server_config["HA_Role"] = "HA variant not available"
                     else:
-                        server_config["HA_Role"] = "HA variant not available"
+                        server_config["HA_Role"] = "N/A"
+                        server_config["HA_Zone"] = "N/A"
+                else:
+                    server_config["Cluster"] = "N/A"
+                    server_config["HA_Role"] = "N/A"
+                    server_config["HA_Zone"] = "N/A"
+
             
             server_data.append(server_config)
 
@@ -1047,12 +1162,15 @@ def render_form_content(tab_key, is_production=False):
         # Set form submitted state
         st.session_state[f'form_submitted_{tab_key}'] = True
         st.session_state[f'form_data_{tab_key}'] = form_data
+        st.session_state[f'just_submitted_{tab_key}'] = True
         
         # Force rerun to show results
         st.rerun()
 
     # Display results after form submission
-    if st.session_state[f'form_submitted_{tab_key}']:
+    if st.session_state.get(f'just_submitted_{tab_key}', False):
+        # Clear the just_submitted flag to prevent re-processing
+        st.session_state[f'just_submitted_{tab_key}'] = False
         st.success(f"{'Production' if is_production else 'Non-Production'} form submitted successfully!")
         
         # # Create a summary of the request
@@ -1060,28 +1178,7 @@ def render_form_content(tab_key, is_production=False):
         
         # # Display summary information
         form_data = st.session_state[f'form_data_{tab_key}']
-        
-        # col1, col2, col3 = st.columns(3)
-        # with col1:
-        #     st.metric("Primary Servers", len(form_data['primary_servers']))
-        # with col2:
-        #     if is_production:
-        #         st.metric("DR Servers", len(form_data['dr_servers']))
-        #     else:
-        #         st.metric("DR Servers", "N/A")
-        # with col3:
-        #     st.metric("Total Servers", len(form_data['server_data']))
-        
-        # # Show server breakdown
-        # if is_production:
-        #     with st.expander("📋 Server Configuration Summary", expanded=True):
-        #         st.write("**Primary Servers:**")
-        #         for server in form_data['primary_servers']:
-        #             st.write(f"- Server {server['Server Number']}: {server['Server Role']} ({server['Instance Type']})")
-                
-        #         st.write("**DR Servers:**")
-        #         for dr_server in form_data['dr_servers']:
-        #             st.write(f"- {dr_server['Server Number']}: {dr_server['Server Role']} ({dr_server['Azure Instance Type']})")
+
         
         # Process the JSON file and generate Excel
         template_path = "Template.xlsx"
@@ -1091,9 +1188,13 @@ def render_form_content(tab_key, is_production=False):
             st.error(f"Excel template not found: {template_path}")
             st.info("Please ensure 'Template.xlsx' is in the same directory as this script.")
         else:
-            form_type = "prod" if is_production else "nonprod"
-            output_excel_path = f"SAP_Request_{form_type}_{form_data['general_config'].get('SID', 'Unknown')}_{form_data['general_config'].get('Environment', '')}.xlsx"
-            
+            if "Amsterdam" in form_data['general_config'].get('Azure Region'):
+                region = "AMS"
+            else:
+                region = "DUB"
+
+            output_excel_path = f"{form_data['general_config'].get('SID', 'Unknown')}_{form_data['general_config'].get('SAP Region', '')}_{region}_Unilever_Build_sheet.xlsx"
+
             try:
                 # Process the data and generate Excel file
                 if not is_production:
@@ -1126,6 +1227,9 @@ def render_form_content(tab_key, is_production=False):
             keys_to_clear = [key for key in st.session_state.keys() if key.endswith(f'_{tab_key}')]
             for key in keys_to_clear:
                 del st.session_state[key]
+            # Also clear the just_submitted flag specifically
+            if f'just_submitted_{tab_key}' in st.session_state:
+                del st.session_state[f'just_submitted_{tab_key}']
             st.rerun()
 
 
