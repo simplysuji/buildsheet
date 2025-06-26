@@ -183,30 +183,30 @@ def process_non_prod_data_to_excel(json_file_path, template_path, output_path=No
         # Column 29: Park My cloud team name and Member
         sheet.cell(row=row, column=29).value = server.get("Park My cloud team name and Member", "")
         
-        # Columns 30-43: Type and Qty pairs (leaving blank)
-        for col in range(30, 44):
-            sheet.cell(row=row, column=col).value = ""
+        # # Columns 30-43: Type and Qty pairs (leaving blank)
+        # for col in range(30, 44):
+        #     sheet.cell(row=row, column=col).value = ""
         
-        # Column 44: Outbound Internet Access Required
-        sheet.cell(row=row, column=44).value = server.get("Outbound Internet Access Required", "")
+        # Column 30: Outbound Internet Access Required
+        sheet.cell(row=row, column=30).value = server.get("Outbound Internet Access Required", "")
+
+        # Column 31: Additional Requirements / Comments (leave blank)
+        sheet.cell(row=row, column=31).value = ""
+
+        # Column 32: Build RFC (leave blank)
+        sheet.cell(row=row, column=32).value = ""
+
+        # Column 33: iSCSI details (leave blank)
+        sheet.cell(row=row, column=33).value = ""
         
-        # Column 45: Additional Requirements / Comments (leave blank)
-        sheet.cell(row=row, column=45).value = ""
-        
-        # Column 46: Build RFC (leave blank)
-        sheet.cell(row=row, column=46).value = ""
-        
-        # Column 47: iSCSI details (leave blank)
-        sheet.cell(row=row, column=47).value = ""
-        
-        # Column 48: Instance Name (leave blank)
-        sheet.cell(row=row, column=48).value = ""
-        
-        # Column 49: Private IP Address (leave blank)
-        sheet.cell(row=row, column=49).value = ""
-        
-        # Column 50: TimeZone (default to "CET")=====
-        sheet.cell(row=row, column=50).value = general_config.get("Timezone", "CET")
+        # Column 34: Instance Name (leave blank)
+        sheet.cell(row=row, column=34).value = ""
+
+        # Column 35: Private IP Address (leave blank)
+        sheet.cell(row=row, column=35).value = ""
+
+        # Column 36: TimeZone (default to "CET")=====
+        sheet.cell(row=row, column=36).value = general_config.get("Timezone", "CET")
     
     
     # Remove Load Balancer Sheet if it exists
@@ -240,10 +240,11 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     
     # Column 1: Azure Region
     if "DR" in server.get("Server Role"):
-        region = "Azure: Northern Europe (Dublin) (IENO)" if "Amsterdam" in general_config.get("Azure Region") else "Azure: Western Europe (Amsterdam) (NLWE)"
-        sheet.cell(row=row, column=1).value = region
+        azure_region = "Azure: Northern Europe (Dublin) (IENO)" if "Amsterdam" in general_config.get("Azure Region") else "Azure: Western Europe (Amsterdam) (NLWE)"
     else:    
-        sheet.cell(row=row, column=1).value = general_config.get("Azure Region", "")
+        azure_region = general_config.get("Azure Region", "")
+    
+    sheet.cell(row=row, column=1).value = azure_region
     
     # Column 2: Environment
     if "DR" in server.get("Server Role"):
@@ -284,12 +285,7 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     # Column 11: Memory / CPU
     sheet.cell(row=row, column=11).value = server.get("Memory/CPU", "")
     
-    # Column 12: Service Model name
-    azure_region = general_config.get("Azure Region", "")
-    # Extract region code from the Azure Region string (e.g., "IENO" from "Azure: Northern Europe (Dublin) (IENO)")
-    region_code = azure_region.split("(")[-1].replace(")", "") if "(" in azure_region else ""
-    
-    
+    # Column 12: Service Model name     
     # Determine AAS counter if it's an AAS server
     aas_counter = None
     city = "Dublin"  # Default
@@ -333,7 +329,11 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     sheet.cell(row=row, column=18).value = general_config.get("Azure Subscription", "")
     
     # Column 19: Azure Resource Group Name (generate based on pattern)
-    region_code = general_config.get("Azure Region Code", "").lower()
+    if "DR" in server.get("Server Role"):
+        region_code = "bieno" if "bnlwe" in general_config.get("Azure Region Code", "").lower() else "bnlwe"
+    else:    
+        region_code = general_config.get("Azure Region Code", "").lower()
+    
     environment_code = get_environment_code(general_config.get("Environment", ""))
     itsg_id = general_config.get("ITSG ID", "")
     sid = general_config.get("SID", "").upper()
@@ -404,30 +404,30 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     # Column 29: Park My cloud team name and Member
     sheet.cell(row=row, column=29).value = server.get("Park My cloud team name and Member", "")
     
-    # Columns 30-43: Type and Qty pairs (leaving blank)
-    for col in range(30, 44):
-        sheet.cell(row=row, column=col).value = ""
+    # # Columns 30-43: Type and Qty pairs (leaving blank)
+    # for col in range(30, 44):
+    #     sheet.cell(row=row, column=col).value = ""
     
-    # Column 44: Outbound Internet Access Required
-    sheet.cell(row=row, column=44).value = server.get("Outbound Internet Access Required", "")
+    # Column 30: Outbound Internet Access Required
+    sheet.cell(row=row, column=30).value = server.get("Outbound Internet Access Required", "")
+
+    # Column 31: Additional Requirements / Comments (leave blank)
+    sheet.cell(row=row, column=31).value = ""
+
+    # Column 32: Build RFC (leave blank)
+    sheet.cell(row=row, column=32).value = ""
+
+    # Column 33: iSCSI details (leave blank)
+    sheet.cell(row=row, column=33).value = ""
     
-    # Column 45: Additional Requirements / Comments (leave blank)
-    sheet.cell(row=row, column=45).value = ""
-    
-    # Column 46: Build RFC (leave blank)
-    sheet.cell(row=row, column=46).value = ""
-    
-    # Column 47: iSCSI details (leave blank)
-    sheet.cell(row=row, column=47).value = ""
-    
-    # Column 48: Instance Name (leave blank)
-    sheet.cell(row=row, column=48).value = ""
-    
-    # Column 49: Private IP Address (leave blank)
-    sheet.cell(row=row, column=49).value = ""
-    
-    # Column 50: TimeZone (default to "CET")
-    sheet.cell(row=row, column=50).value = general_config.get("Timezone", "CET")
+    # Column 34: Instance Name (leave blank)
+    sheet.cell(row=row, column=34).value = ""
+
+    # Column 35: Private IP Address (leave blank)
+    sheet.cell(row=row, column=35).value = ""
+
+    # Column 36: TimeZone (default to "CET")=====
+    sheet.cell(row=row, column=36).value = general_config.get("Timezone", "CET")
     
     return row + 1
 
@@ -485,7 +485,7 @@ def process_prod_data_to_excel(json_file_path, template_path, output_path=None):
     current_row += 1  # First blank row
     
     # Fill the next row with blue color (columns A to AX = 1 to 50)
-    for col in range(1, 51):
+    for col in range(1, 37):
         cell = sheet.cell(row=current_row, column=col)
         cell.fill = openpyxl.styles.PatternFill(start_color="657C9C", end_color="657C9C", fill_type="solid")
     
@@ -523,7 +523,7 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_prod_E4E.json"
+    json_file = "sap_form_data_prod_P2P.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     

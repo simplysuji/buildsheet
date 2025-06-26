@@ -549,7 +549,7 @@ def render_file_management_tab():
         """)
 
 
-def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
+def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code):
     """
     Render DR server configuration form
     
@@ -674,9 +674,16 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         # Show AFS Servername option if server role contains PAS
         dr_afs_needed = "NA"  # Default value
         if contains_ascs(dr_server_role):
-            dr_afs_needed = st.text_input("AFS Server Name", 
+            dr_region_code = "bieno" if "bnlwe" in region_code.lower() else "bnlwe"
+
+            dr_afs_needed = st.text_input(f'AFS Server Name ({dr_region_code+"stgunileversp*****"})', 
                                         key=f"dr_afs_needed_{tab_key}_{server_index}",
                                         help="Required for ASCS servers")
+            
+            if dr_afs_needed and not dr_afs_needed.isdigit():
+                st.error("Please enter **only digits** to be filled in (*****)")
+
+            dr_afs = dr_region_code+"stgunileversp"+dr_afs_needed
         
         # Third row: Instance Type, Memory/CPU
         col1, col2 = st.columns(2)
@@ -704,13 +711,14 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
                 ["On Demand", "Reservation"], 
                 key=f"dr_reservation_type_{tab_key}_{server_index}"
             )
-        with col2:
-            dr_reservation_term = st.selectbox(
-                "Reservation Term", 
-                ["One Year", "Three Years"],
-                disabled=dr_reservation_type != "Reservation", 
-                key=f"dr_reservation_term_{tab_key}_{server_index}"
-            )
+        if dr_reservation_type == "Reservation":
+            with col2:
+                dr_reservation_term = st.selectbox(
+                    "Reservation Term", 
+                    ["One Year", "Three Years"],
+                    disabled=dr_reservation_type != "Reservation", 
+                    key=f"dr_reservation_term_{tab_key}_{server_index}"
+                )
         
         # Fifth row: Cloud management
         col1, col2 = st.columns(2)
@@ -732,13 +740,13 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         
         # Sixth row: Team information, Internet access, Timezone
         col1, col2, = st.columns(2)
-        with col1:
+        with col2:
             dr_team_name = st.text_input(
                 "Park My cloud team name and Member", 
                 disabled=dr_opt_in_out != "In",
                 key=f"dr_team_name_{tab_key}_{server_index}"
             )
-        with col2:
+        with col1:
             dr_park_schedule = st.selectbox(
                 "Park My Cloud Schedule", 
                 PARK_SCHEDULES, 
@@ -754,7 +762,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index):
         "Record Type": dr_record_type,
         "OS Version": dr_os_version,
         "Availability Set": dr_availability_set if contains_pas(dr_server_role) else "N/A",
-        "AFS Server Name": dr_afs_needed if contains_ascs(dr_server_role) else "N/A",
+        "AFS Server Name": dr_afs if contains_ascs(dr_server_role) else "N/A",
         "AZ Selection": dr_az_selection,
         "Azure Instance Type": dr_instance_type,
         "Memory/CPU": get_vm_size(dr_instance_type, vm_sku_mapping),
@@ -838,7 +846,7 @@ def render_form_content(tab_key, is_production=False):
     with col2:
         azure_region = st.selectbox("Azure Region", AZURE_REGIONS, key=f"azure_region_{tab_key}")
     with col3:
-            azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
+        azure_subscription = st.selectbox("Azure Subscription", AZURE_SUBSCRIPTIONS, key=f"azure_subscription_{tab_key}")
 
     # Auto-determine region code based on azure_region selection
     region_code = get_region_code(azure_region)
@@ -954,10 +962,13 @@ def render_form_content(tab_key, is_production=False):
             # Show AFS Servername option if server role contains PAS
             afs_needed = "NA"  # Default value
             if contains_ascs(server_role):
-                afs_needed = st.text_input("AFS Server Name", 
+                afs_needed = st.text_input(f'AFS Server Name ({region_code+"stgunileversp*****"})',  
                                               key=f"afs_needed_{tab_key}_{i}",
                                               help="Required for ASCS servers")
-            
+                if afs_needed and not afs_needed.isdigit():
+                    st.error("Please enter **only digits** to be filled in (*****)")
+                primary_afs = region_code+"stgunileversp"+afs_needed
+                
             # Production-specific fields: A Record/CNAME, AZ Selection, and Cluster
             if is_production:
                 col1, col2, col3 = st.columns(3)
@@ -1078,7 +1089,7 @@ def render_form_content(tab_key, is_production=False):
                 "Server Role": server_role,
                 "Server Role Version": server_role_version,
                 "Availability Set": availability_set if contains_pas(server_role) else "N/A",
-                "AFS Server Name": afs_needed if contains_ascs(server_role) else "N/A",
+                "AFS Server Name": primary_afs if contains_ascs(server_role) else "N/A",
                 "OS Version": os_version,
                 "Instance Type": instance_type,
                 "Memory/CPU": get_vm_size(instance_type, vm_sku_mapping),
@@ -1150,7 +1161,7 @@ def render_form_content(tab_key, is_production=False):
         
         # Create DR configuration only for enabled DR servers
         for i in st.session_state[f'dr_servers_enabled_{tab_key}']:
-            dr_config = render_dr_server_config(tab_key, vm_sku_mapping, i)
+            dr_config = render_dr_server_config(tab_key, vm_sku_mapping, i, region_code)
             dr_server_data.append(dr_config)
 
     # SUBMISSION FORM

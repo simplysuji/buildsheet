@@ -658,10 +658,10 @@ def add_other_sheets(json_file_path, template_path, workbook):
         if has_dr:
             if is_production:
                 # Production DR scenario
-                sheet.cell(row=25, column=1).value = f"Primary - {region} ({afs_servername})"
-                sheet.cell(row=27, column=1).value = f"Primary - {region} ({afs_servername})"
-                sheet.cell(row=35, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
-                sheet.cell(row=37, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+                sheet.cell(row=36, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=38, column=1).value = f"Primary - {region} ({afs_servername})"
+                sheet.cell(row=46, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
+                sheet.cell(row=48, column=1).value = f"DR - {region_dr} ({afs_servername_dr}/)"
             else:
                 # Non-production DR scenario
                 sheet.cell(row=13, column=1).value = f"Primary - {region} ({afs_servername})"
