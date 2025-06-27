@@ -346,7 +346,7 @@ def render_file_management_tab():
                 file_size = os.path.getsize(feeder_file_path)
                 file_size_mb = round(file_size / (1024 * 1024), 2)
                 modification_time = os.path.getmtime(feeder_file_path)
-                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%Y-%m-%d %H:%M:%S IST')
+                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%d-%m-%Y %H:%M:%S IST')
                 
                 st.info(f"📊 **Current File Info:**\n- Size: {file_size_mb} MB\n- Last Modified: {mod_date}")
                 
@@ -402,7 +402,7 @@ def render_file_management_tab():
                                 try:
                                     # Create backup of existing file if it exists
                                     if os.path.exists(feeder_file_path):
-                                        backup_path = f"backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_SAP Buildsheet Automation Feeder.xlsx"
+                                        backup_path = f"backup_{pd.Timestamp.now().strftime('%d%m%Y_%H%M%S')}_SAP Buildsheet Automation Feeder.xlsx"
                                         os.rename(feeder_file_path, backup_path)
                                         st.info(f"🔄 Existing file backed up as: {backup_path}")
                                     
@@ -451,7 +451,7 @@ def render_file_management_tab():
                 file_size = os.path.getsize(template_file_path)
                 file_size_mb = round(file_size / (1024 * 1024), 2)
                 modification_time = os.path.getmtime(template_file_path)
-                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%Y-%m-%d %H:%M:%S IST')
+                mod_date = pd.to_datetime(modification_time, unit='s').tz_localize('UTC').tz_convert('Asia/Kolkata').strftime('%d-%m-%Y %H:%M:%S IST')
 
                 st.info(f"📊 **Current File Info:**\n- Size: {file_size_mb} MB\n- Last Modified: {mod_date}")
                 
@@ -508,7 +508,7 @@ def render_file_management_tab():
                             try:
                                 # Create backup of existing file if it exists
                                 if os.path.exists(template_file_path):
-                                    backup_path = f"backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_Template.xlsx"
+                                    backup_path = f"backup_{pd.Timestamp.now().strftime('%d%m%Y_%H%M%S')}_Template.xlsx"
                                     os.rename(template_file_path, backup_path)
                                     st.info(f"🔄 Existing file backed up as: {backup_path}")
                                 
@@ -549,7 +549,7 @@ def render_file_management_tab():
         """)
 
 
-def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code):
+def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, az_zone_mapping):
     """
     Render DR server configuration form
     
@@ -661,14 +661,38 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code):
                 )
         
         with col3:
-            # Simple DR AZ zone selection with default options
             dr_az_zones = ["1", "2", "3"]
-            
+            dr_aas_servers_so_far = 0
+            for idx in st.session_state[f'dr_servers_enabled_{tab_key}']:
+                if idx < server_index:  # Count AAS servers before current one
+                    prev_dr_role = st.session_state.get(f"dr_server_role_{tab_key}_{idx}", "")
+                    if "AAS" in prev_dr_role:
+                        dr_aas_servers_so_far += 1
+
+            # Get DR region HA/Primary zones (opposite of primary region)
+            dr_region = "Dublin" if "bnlwe" in region_code.lower() else "Amsterdam"
+            current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
+            dr_suggested_primary, dr_suggested_ha = get_az_zones(current_azure_subscription, dr_region, az_zone_mapping)
+
+            # Determine zone for current DR server
+            if "AAS" in dr_server_role:
+                dr_aas_servers_so_far += 1
+                # Odd DR AAS servers get HA zone, even get Primary zone (same pattern as primary)
+                selected_dr_zone = dr_suggested_ha if dr_aas_servers_so_far % 2 == 1 else dr_suggested_primary
+                dr_zone_help = f"Load balanced zone for DR AAS server #{dr_aas_servers_so_far}"
+            else:
+                # Non-AAS servers use suggested primary zone (same as primary logic)
+                selected_dr_zone = dr_suggested_primary
+                dr_zone_help = f"Suggested Primary Zone: {dr_suggested_primary} (based on subscription and region)"
+
+            selected_dr_zone_index = dr_az_zones.index(selected_dr_zone) if selected_dr_zone in dr_az_zones else 0
+
             dr_az_selection = st.selectbox(
                 "AZ Selection - Zone", 
                 dr_az_zones,
+                index=selected_dr_zone_index,
                 key=f"dr_az_selection_{tab_key}_{server_index}",
-                help="Select the availability zone for the DR server"
+                help=dr_zone_help
             )
         
         # Show AFS Servername option if server role contains PAS
@@ -912,6 +936,7 @@ def render_form_content(tab_key, is_production=False):
     # Create a section for each server
     server_data = []
     dr_server_data = []
+    aas_server_count = 0  # Track AAS servers for load balancing
     
     for i in range(st.session_state[f'num_servers_{tab_key}']):
         with st.expander(f"🖥️ Primary Server {i+1}", expanded=True):
@@ -975,24 +1000,31 @@ def render_form_content(tab_key, is_production=False):
                 with col1:
                     record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}_{i}")
                 with col2:
+                    
                     # Get suggested AZ zones based on subscription and region
                     current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
                     current_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
                     suggested_primary, suggested_ha = get_az_zones(current_azure_subscription, current_azure_region, az_zone_mapping)
-                    
                     # Set default index for suggested primary zone
                     az_zones = ["1", "2", "3"]
                     default_primary_index = 0
-                    if suggested_primary in az_zones:
-                        default_primary_index = az_zones.index(suggested_primary)
+                    
+                    if "AAS" in server_role:
+                        aas_server_count += 1
+                        # Odd AAS servers get HA zone, even get Primary zone
+                        selected_zone = suggested_ha if aas_server_count % 2 == 1 else suggested_primary
+                        selected_zone_index = az_zones.index(selected_zone) if selected_zone in az_zones else 0
+                    else:
+                        # Non-AAS servers use suggested primary zone
+                        selected_zone_index = az_zones.index(suggested_primary)
                     
                     az_selection = st.selectbox(
                         "AZ Selection - Zone", 
                         az_zones,
-                        index=default_primary_index,
+                        index=selected_zone_index,
                         disabled=True,
                         key=f"az_selection_{tab_key}_{i}",
-                        help=f"Suggested Primary Zone: {suggested_primary} (based on subscription and region)"
+                        help=f"{'Load balanced zone for AAS server #' + str(aas_server_count) if 'AAS' in server_role else 'Suggested Primary Zone: ' + suggested_primary} (based on subscription and region)"
                     )
                 with col3:
                     # Show cluster option only for specific server roles
@@ -1161,7 +1193,7 @@ def render_form_content(tab_key, is_production=False):
         
         # Create DR configuration only for enabled DR servers
         for i in st.session_state[f'dr_servers_enabled_{tab_key}']:
-            dr_config = render_dr_server_config(tab_key, vm_sku_mapping, i, region_code)
+            dr_config = render_dr_server_config(tab_key, vm_sku_mapping, i, region_code, az_zone_mapping)
             dr_server_data.append(dr_config)
 
     # SUBMISSION FORM
