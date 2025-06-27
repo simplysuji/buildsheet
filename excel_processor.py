@@ -294,12 +294,15 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
         if "Amsterdam" in general_config.get("Azure Region", ""):
             city = "Amsterdam"
         
+        aas_counter = aas_counters[city]
+        aas_counters[city] += 1
+        
     elif "AAS" in server.get("Server Role", "") and "DR" in server.get("Server Role"):
         if "Dublin" in general_config.get("Azure Region", ""):
             city = "Amsterdam"
-        
-    aas_counter = aas_counters[city]
-    aas_counters[city] += 1
+            
+        aas_counter = aas_counters[city]
+        aas_counters[city] += 1
     
     service_model_name = generate_service_model_names(
         server.get("Server Role", ""), 
@@ -523,7 +526,7 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_prod_ASA.json"
+    json_file = "sap_form_data_prod_FCK.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     
