@@ -1,4 +1,3 @@
-import pandas as pd
 import json
 import os
 import openpyxl
@@ -526,7 +525,7 @@ if __name__ == "__main__":
     # json_file = sys.argv[1]
     # template_file = sys.argv[2]
     # output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    json_file = "sap_form_data_prod_FCK.json"
+    json_file = "sap_form_data_prod_P2P.json"
     template_file = "Template.xlsx"
     output_file = "Filled_SAP_Template.xlsx"
     
