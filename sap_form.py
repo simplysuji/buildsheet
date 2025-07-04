@@ -958,7 +958,7 @@ def render_form_content(tab_key, is_production=False):
     
 
     # SERVER CONFIGURATION SECTION
-    st.subheader("Primary Server Configuration")
+    st.subheader("Primary Region Server Configuration")
 
     # Create a section for each server
     server_data = []
@@ -966,7 +966,7 @@ def render_form_content(tab_key, is_production=False):
     aas_server_count = 0  # Track AAS servers for load balancing
     
     for i in range(st.session_state[f'num_servers_{tab_key}']):
-        with st.expander(f"🖥️ Primary Server {i+1}", expanded=True):
+        with st.expander(f"🖥️ Primary Region Server {i+1}", expanded=True):
                        
             # Basic server info
             col1, col2, col3 = st.columns(3)
@@ -1194,7 +1194,7 @@ def render_form_content(tab_key, is_production=False):
 
     # DR SERVER CONFIGURATION SECTION (Only for Production)
     if is_production:
-        st.subheader("Disaster Recovery (DR) Server Configuration")
+        st.subheader("Disaster Recovery (DR) Region Server Configuration")
         
         # Update the enabled DR servers list when number of servers changes
         current_num_servers = st.session_state[f'num_servers_{tab_key}']
@@ -1228,7 +1228,7 @@ def render_form_content(tab_key, is_production=False):
         st.write("Review the configuration above and submit when ready.")
         if is_production:
             enabled_dr_count = len(st.session_state[f'dr_servers_enabled_{tab_key}'])
-            st.write(f"**Summary:** {st.session_state[f'num_servers_{tab_key}']} Primary servers + {enabled_dr_count} DR servers = {st.session_state[f'num_servers_{tab_key}'] + enabled_dr_count} total servers")
+            st.write(f"**Summary:** {st.session_state[f'num_servers_{tab_key}']} Primary region servers + {enabled_dr_count} DR region servers = {st.session_state[f'num_servers_{tab_key}'] + enabled_dr_count} total servers")
         submit_button = st.form_submit_button(f"Submit {'Production' if is_production else 'Non-Production'} Request")
 
     # Handle form submission

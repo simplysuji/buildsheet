@@ -138,7 +138,7 @@ def process_non_prod_data_to_excel(json_file_path, template_path, output_path=No
         
         # Column 21: Proximity Placement Group (updated format)
         server_role = server.get("Server Role", "")
-        if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS"]):
+        if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS", "Optimizer"]):
             sap_region = general_config.get("SAP Region", "Sirius")
             region_letter = get_sap_region_letter(sap_region)
             az_zone = general_config.get("AZ Selection", "")
@@ -351,7 +351,7 @@ def fill_server_data(sheet, server, general_config, row, aas_counters):
     
     # Column 21: Proximity Placement Group (updated format)
     server_role = server.get("Server Role", "")
-    if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS"]):
+    if any(role in server_role for role in ["PAS", "AAS", "ASCS", "SCS", "Optimizer"]):
         sap_region = general_config.get("SAP Region", "Sirius")
         region_letter = get_sap_region_letter(sap_region)
         if "-HA" in server_role:
