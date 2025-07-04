@@ -613,8 +613,9 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, 
                         key=f"remove_dr_{tab_key}_{server_index}",
                         help=f"Remove DR Server {server_index+1}",
                         type="secondary"):
+                
                 remove_dr_server(tab_key, server_index)
-                st.rerun()   
+                st.rerun()
                 
         # First row: Server Role, A Record/CNAME, Service Criticality
         col1, col2 = st.columns(2)
