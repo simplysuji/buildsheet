@@ -212,7 +212,7 @@ def update_num_servers(tab_key):
 
 # Function to check if server role contains PAS
 def contains_pas(server_role):
-    return "PAS" in server_role.upper() or "AAS" in server_role.upper()
+    return "PAS" in server_role.upper() or "AAS" in server_role.upper() or "Optimizer" in server_role
 
 # Function to check if server role contains ASCS
 def contains_ascs(server_role):
@@ -547,6 +547,50 @@ def render_file_management_tab():
         - 🚀 Changes will take effect immediately after saving
         """)
 
+def get_suggested_dr_role(primary_server_role, form_options):
+    """
+    Dynamically find the corresponding DR role for a primary server role
+    
+    Args:
+        primary_server_role (str): The primary server role
+        form_options (dict): Form options containing SERVER_ROLES list
+        
+    Returns:
+        str: The suggested DR role if found, empty string otherwise
+    """
+    # Get the list of all server roles
+    all_server_roles = form_options.get('SERVER_ROLES', [])
+    
+    # Filter to get only DR roles
+    dr_server_roles = [role for role in all_server_roles if '-DR' in role]
+    
+    # If the primary role already contains DR, return empty
+    if "DR" in primary_server_role:
+        return ""
+    
+    # Try to find exact match: "{primary_server_role}-DR"
+    suggested_dr_role = f"{primary_server_role}-DR"
+    if suggested_dr_role in dr_server_roles:
+        return suggested_dr_role
+    
+    # If exact match not found, try some common pattern matching
+    # This handles cases where the primary role might have slight variations
+    for dr_role in dr_server_roles:
+        # Remove "-DR" from the DR role to get the base name
+        base_dr_role = dr_role.replace("-DR", "")
+        
+        # Check if the primary role matches the base DR role
+        if primary_server_role.lower() == base_dr_role.lower():
+            return dr_role
+        
+        # Check if primary role is contained in the base DR role or vice versa
+        # This handles cases like "ASCS+PAS" -> "ASCS-DR" (if available)
+        if primary_server_role in base_dr_role or base_dr_role in primary_server_role:
+            return dr_role
+    
+    # If no match found, return empty string
+    return ""
+
 
 def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, az_zone_mapping):
     """
@@ -577,33 +621,13 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, 
     # Get the primary server role to create DR equivalent
     primary_server_role = st.session_state.get(f"server_role_{tab_key}_{server_index}", "") 
 
-    # Try to auto-suggest DR role
-    suggested_dr_role = ""
-    if "AAS" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "AAS-DR"
-    elif "ASCS" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "ASCS-DR"
-    elif "HANA DB" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "HANA DB-DR"
-    elif "Maxdb" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "Maxdb-DR"
-    elif "Web Dispatcher" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "Web Dispatcher-DR"
-    elif "DB2 DB" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "DB2 DB-DR"
-    elif "PAS" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "PAS-DR"
-    elif "SCS" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "SCS-DR"
-    elif "Web Dispatcher" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "Web Dispatcher-DR"
-    elif "iSCSI SBD" in primary_server_role and "DR" not in primary_server_role:
-        suggested_dr_role = "iSCSI SBD-DR" 
+    suggested_dr_role = get_suggested_dr_role(primary_server_role, form_options)
     
     # Set default index for DR role
     default_dr_index = 0
     if suggested_dr_role and suggested_dr_role in dr_server_roles:
         default_dr_index = dr_server_roles.index(suggested_dr_role)
+    
     
     with st.expander(f"🔄 DR Server {server_index+1} Configuration", expanded=True):
         # Add remove button at the top
