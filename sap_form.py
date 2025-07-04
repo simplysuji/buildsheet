@@ -660,46 +660,40 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, 
                 )
         
         with col3:
-            # dr_az_zones = ["1", "2", "3"]
-            # dr_aas_servers_so_far = 0
-            # for idx in st.session_state[f'dr_servers_enabled_{tab_key}']:
-            #     if idx < server_index:  # Count AAS servers before current one
-            #         prev_dr_role = st.session_state.get(f"dr_server_role_{tab_key}_{idx}", "")
-            #         if "AAS" in prev_dr_role:
-            #             dr_aas_servers_so_far += 1
+            dr_az_zones = ["1", "2", "3"]
+            dr_aas_servers_so_far = 0
+            for idx in st.session_state[f'dr_servers_enabled_{tab_key}']:
+                if idx < server_index:  # Count AAS servers before current one
+                    prev_dr_role = st.session_state.get(f"dr_server_role_{tab_key}_{idx}", "")
+                    if "AAS" in prev_dr_role:
+                        dr_aas_servers_so_far += 1
 
-            # # Get DR region HA/Primary zones (opposite of primary region)
-            # dr_region = "Dublin" if "bnlwe" in region_code.lower() else "Amsterdam"
-            # current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
-            # dr_suggested_primary, dr_suggested_ha = get_az_zones(current_azure_subscription, dr_region, az_zone_mapping)
+            # Get DR region HA/Primary zones (opposite of primary region)
+            dr_region = "Dublin" if "bnlwe" in region_code.lower() else "Amsterdam"
+            current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
+            dr_suggested_primary, dr_suggested_ha = get_az_zones(current_azure_subscription, dr_region, az_zone_mapping)
 
-            # # Determine zone for current DR server
-            # if "AAS" in dr_server_role:
-            #     dr_aas_servers_so_far += 1
-            #     # Odd DR AAS servers get HA zone, even get Primary zone (same pattern as primary)
-            #     selected_dr_zone = dr_suggested_ha if dr_aas_servers_so_far % 2 == 1 else dr_suggested_primary
-            #     dr_zone_help = f"Load balanced zone for DR AAS server #{dr_aas_servers_so_far}"
-            # else:
-            #     # Non-AAS servers use suggested primary zone (same as primary logic)
-            #     selected_dr_zone = dr_suggested_primary
-            #     dr_zone_help = f"Suggested Primary Zone: {dr_suggested_primary} (based on subscription and region)"
+            # Determine zone for current DR server
+            if "AAS" in dr_server_role:
+                dr_aas_servers_so_far += 1
+                # Odd DR AAS servers get HA zone, even get Primary zone (same pattern as primary)
+                selected_dr_zone = dr_suggested_ha if dr_aas_servers_so_far % 2 == 1 else dr_suggested_primary
+                dr_zone_help = f"Load balanced zone for DR AAS server #{dr_aas_servers_so_far}"
+            else:
+                # Non-AAS servers use suggested primary zone (same as primary logic)
+                selected_dr_zone = dr_suggested_primary
+                dr_zone_help = f"Suggested Primary Zone: {dr_suggested_primary} (based on subscription and region)"
 
-            # selected_dr_zone_index = dr_az_zones.index(selected_dr_zone) if selected_dr_zone in dr_az_zones else 0
+            selected_dr_zone_index = dr_az_zones.index(selected_dr_zone) if selected_dr_zone in dr_az_zones else 0
 
-            # dr_az_selection = st.selectbox(
-            #     "AZ Selection - Zone", 
-            #     dr_az_zones,
-            #     index=selected_dr_zone_index,
-            #     key=f"dr_az_selection_{tab_key}_{server_index}",
-            #     help=dr_zone_help
-            # )
             dr_az_selection = st.selectbox(
                 "AZ Selection - Zone", 
-                "<x>",
-                disabled=True,
+                dr_az_zones,
+                index=selected_dr_zone_index,
                 key=f"dr_az_selection_{tab_key}_{server_index}",
-                help="Setting default value for DR servers"
+                help=dr_zone_help
             )
+
         
         # Show AFS Servername option if server role contains PAS
         dr_afs_needed = "NA"  # Default value
@@ -919,39 +913,32 @@ def render_form_content(tab_key, is_production=False):
     if not is_production:
         col1, col2 = st.columns(2)
         with col1:
-            # # Get suggested AZ zones based on subscription and region
-            # current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
-            # current_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
-            # suggested_primary, suggested_ha = get_az_zones(current_azure_subscription, current_azure_region, az_zone_mapping)
-            
-            # # Display AZ zone as read-only (grayed out)
-            # az_selection = st.text_input(
-            #     "AZ Selection - Zone", 
-            #     value=suggested_primary,
-            #     disabled=True,
-            #     key=f"az_selection_{tab_key}",
-            #     help="Auto-assigned based on subscription and region selection"
-            # )
+            # Get suggested AZ zones based on subscription and region
+            current_azure_subscription = st.session_state.get(f"azure_subscription_{tab_key}", "")
+            current_azure_region = st.session_state.get(f"azure_region_{tab_key}", "")
+            suggested_primary, suggested_ha = get_az_zones(current_azure_subscription, current_azure_region, az_zone_mapping)
             current_environment = st.session_state.get(f"environment_{tab_key}", "")
             
             if current_environment in ["Fix Development", "Fix Quality", "Project Development", "Project Quality", "Sandbox",]:
+            
+                # Display AZ zone as read-only (grayed out)
                 az_selection = st.text_input(
                     "AZ Selection - Zone", 
-                    value="<y>",
+                    value=suggested_ha,
                     disabled=True,
                     key=f"az_selection_{tab_key}",
-                    help="Auto-assigned based on environment selection"
+                    help="Auto-assigned based on subscription and region selection"
                 )
+            
             else:
+                # Display AZ zone as read-only (grayed out)
                 az_selection = st.text_input(
                     "AZ Selection - Zone", 
-                    value="<x>",
+                    value=suggested_primary,
                     disabled=True,
                     key=f"az_selection_{tab_key}",
-                    help="Setting default value for Non-Production environments"
-                )
-            
-            
+                    help="Auto-assigned based on subscription and region selection"
+                )            
             
         with col2:
             record_type = st.selectbox("A Record / CNAME", RECORD_TYPES, key=f"record_type_{tab_key}")
