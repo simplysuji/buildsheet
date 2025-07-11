@@ -189,7 +189,8 @@ def get_default_form_options():
             "Weekdays-12 hours Snooze(10pm IST to 10am IST) and Weekends Off",
             "Weekdays-12 hours Snooze(11pm IST to 11am IST) and Weekends Off"
         ],
-        'TIMEZONE': ["IST", "UTC", "CET", "CEST", "GMT", "CST", "PST", "EST", "BST"]
+        'TIMEZONE': ["IST", "UTC", "CET", "CEST", "GMT", "CST", "PST", "EST", "BST"],
+        'RECORD_TYPES': ["A Record", "CNAME"]
     }
 
 # Add this function to get VM size based on VM type
@@ -604,7 +605,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, 
     Returns:
         dict: DR server configuration data
     """
-    RECORD_TYPES = ["A Record", "CNAME"]
+    
     INSTANCE_TYPES = list(vm_sku_mapping.keys()) if vm_sku_mapping else [
         "D8asv4", "E8asv4", "E16_v3", "E16as_v4", "E16ds_v4", "E16s_v3", "E2_v3", 
         "E20as_v4", "E20ds_v4", "E20s_v3", "E2as_v4", "E2ds_v4", "E2s_v3", "E32_v3",
@@ -617,6 +618,7 @@ def render_dr_server_config(tab_key, vm_sku_mapping, server_index, region_code, 
     dr_server_roles = [role for role in form_options['SERVER_ROLES'] if '-DR' in role]
     OS_VERSIONS = form_options['OS_VERSIONS']
     PARK_SCHEDULES = form_options['PARK_SCHEDULES']
+    RECORD_TYPES = form_options['RECORD_TYPES']
     
     # Get the primary server role to create DR equivalent
     primary_server_role = st.session_state.get(f"server_role_{tab_key}_{server_index}", "") 
@@ -872,7 +874,7 @@ def render_form_content(tab_key, is_production=False):
     AZURE_REGIONS = form_options['AZURE_REGIONS']
     SERVER_ROLES = [role for role in form_options['SERVER_ROLES'] if '-DR' not in role and '-HA' not in role]
     OS_VERSIONS = form_options['OS_VERSIONS']
-    RECORD_TYPES = ["A Record", "CNAME"]
+    RECORD_TYPES = form_options['RECORD_TYPES']
     PARK_SCHEDULES = form_options['PARK_SCHEDULES']
     TIMEZONE = form_options['TIMEZONE']
 
